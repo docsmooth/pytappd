@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 gVers = "0.1"
 
-import os, sys, re, warnings, operator, datetime, socket, io, copy
+import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse
 
 ##################################################################################
 #
@@ -34,6 +34,7 @@ try:
 except ImportError:
     import ConfigParser
     gPythonv=2
+    #now we can use this if we want to ask for input, and can ask the right way.
 
 # because Python 2.x uses "socket.error" and Python 3.x uses BrokenPipeError
 # We have to variablize the expected error states so that we can properly
@@ -49,14 +50,11 @@ except NameError:
 gInteractive=True
 if not (sys.stdout.isatty() and sys.stdin.isatty()):
     #Are in some kind of pipeline, so disabling interactive input.
-    # TODO v4.4.0 Rob's wondering if this should force --multiple to be true as well? I don't know what will break when -t pw -a request is run in scripts though
     gInteractive=False
 
 from collections import defaultdict
-from optparse import (OptionParser,BadOptionError,AmbiguousOptionError,OptionGroup)
 
-# BeyondTrust use so many self-signed certificates, these warnings should be hidden
-# especially in scripts where the only output should be the actual password.
+# disable HTTPS Insecure warnings, because they'll have already set a flag saying they want to ignore.
 requests.packages.urllib3.disable_warnings()
 try:
     from requests.packages.urllib3.exceptions import InsecureRequestWarning
@@ -85,6 +83,12 @@ class pytappdObject(object):
                 "info":self.info,
                 "auth":self.auth,
                 }
+        if gPythonv==3:
+            authconfig=configparser.ConfigParser()
+        elif gPythonv==2:
+            authconfig=ConfigParser.ConfigParser()
+        authconfig.read(gAuthconfig)
+
     def responses(self):
         self.responses.code=0
         self.responses.error="None"
@@ -95,6 +99,7 @@ class pytappdObject(object):
             self.responses.error=self.r.json("error_detail")
             self.responses.error_type=self.r.json("error_type")
             self.responses.friendly=self.r.json("developer_friendly")
+
     def auth(self):
         pass
 
@@ -132,11 +137,6 @@ class user(pytappdObject):
         pytappdObject.__init__(self,name)
 
 def runUntappd(self):
-    if gPythonv==3:
-        authconfig=configparser.ConfigParser()
-    elif gPythonv==2:
-        authconfig=ConfigParser.ConfigParser()
-    authconfig.read(gAuthconfig)
     mytype=""
     if options.type in gPBPStypes:
         mytype=gPBPStypes[options.type]
