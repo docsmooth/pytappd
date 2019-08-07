@@ -127,7 +127,7 @@ class authObject(object):
 
     def default(self, configfile):
         printinfo("authObject", "Writing new auth object!")
-        self.authconfig["Authorization"]["ClientID"]="85AF2DB1228456F567A3663A793D6BE03C656FB4"
+        self.authconfig["Authorization"]["ClientID"]="dummy"
         self.save(configfile)
 
 
