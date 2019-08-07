@@ -58,9 +58,6 @@ except NameError:
     brokenpipeerror = IOError
 
 gInteractive=True
-if not (sys.stdout.isatty() and sys.stdin.isatty()):
-    #Are in some kind of pipeline, so disabling interactive input.
-    gInteractive=False
 
 from collections import defaultdict
 
@@ -80,16 +77,77 @@ except ImportError:
 gSession=requests.Session()
 gMultiple=None
 gOptions=None
+gRedirectURL="https://www.totalnetsolutions.net/pytappd/callback"
+
+class authObject(object):
+    def __init__(self, config):
+        printdebug("authObject", "Initializing {0}".format(config))
+        self.authconfig=None
+        self.authenticated=False
+        self.id=None
+        self.token=None
+        self.name=config
+        if gPythonv==3:
+            printdebug("authObject", "Python3 config parsing...")
+            self.authconfig=configparser.ConfigParser()
+        elif gPythonv==2:
+            printdebug("authObject", "Python2 config parsing...")
+            self.authconfig=ConfigParser.ConfigParser()
+        self.authconfig.read(config)
+        if "Authorization" in self.authconfig:
+            printdebug("authObject", "Found Authorization section")
+            if self.authconfig["Authorization"]["clientid"]:
+                printverbose("authObject", "Set Clientid to {0}".format(self.authconfig["Authorization"]["clientid"]))
+                self.id=self.authconfig["Authorization"]["clientid"]
+            if self.authconfig["Authorization"].get("token", False):
+                printverbose("authObject", "Set Token to {0}".format(self.authconfig["Authorization"]["token"]))
+                self.token=self.authconfig["Authorization"]["token"]
+                self.authenticated=True
+            elif self.authconfig["Authorization"].get("Access_token", False):
+                printverbose("authObject", "Set Token to {0}".format(self.authconfig["Authorization"]["access_token"]))
+                self.token=self.authconfig["Authorization"]["access_token"]
+                self.authenticated=True
+            printdebug("authObject", "Initialization complete, have id: {0}, and token {1}".format(self.id, self.token))
+        else:
+            printwarn("authObject", "No Authorization section found, does the file {0} exist?!")
+            return False
+
+
+    def save(self, configfile):
+        printinfo("authObject", "Saving configuration as new file.")
+        if self.token:
+            printinfo("authObject", "storing access token: {0}".format(self.token))
+            self.authconfig["Authorization"]["Access_Token"]=self.token
+        if self.id:
+            printinfo("authObject", "storing Client ID: {0}".format(self.id))
+            self.authconfig["Authorization"]["ClientID"]=self.id
+        with open(configfile, 'w') as filename:
+           self.authconfig.write(filename)
+
+
+    def default(self, configfile):
+        printinfo("authObject", "Writing new auth object!")
+        self.authconfig["Authorization"]["ClientID"]="85AF2DB1228456F567A3663A793D6BE03C656FB4"
+        self.save(configfile)
+
+
 
 class pytappdObject(object):
     def __init__(self, name):
         global gSession
         self.s=gSession
+        self.name = name
         self.r=None
         self.result=False
         self.baseurl=gBaseUrl
         self.data=None
         self.params=None
+        self.responses={
+                "code":0,
+                "error": "None",
+                "error_type":"None",
+                "friendly":"None",
+                }
         self.actions={
                 #"json":self.json,
                 #"feed":self.checkins,
@@ -97,19 +155,64 @@ class pytappdObject(object):
                 "auth":self.auth,
                 }
 
-    def responses(self):
-        self.responses.code=0
-        self.responses.error="None"
-        self.responses.error_type="None"
-        self.responses.friendly="None"
+    def saveresponses(self):
         if self.r:
-            self.responses.code=self.r.json("code")
-            self.responses.error=self.r.json("error_detail")
-            self.responses.error_type=self.r.json("error_type")
-            self.responses.friendly=self.r.json("developer_friendly")
+            self.responses["code"]=self.r.status_code
+            self.responses["error"]=self.r.json("error_detail")
+            self.responses["error_type"]=self.r.json("error_type")
+            self.responses["friendly"]=self.r.json("developer_friendly")
 
-    def auth(self):
-        pass
+    def auth(self, auth=None):
+        printdebug("auth", "Need to auth online, backing up baseurl...")
+        if type(auth) != type(authObject):
+            printinfo("auth", "Was passed an empty auth object, is normal at beginning of program, seeding with gOptions.")
+            auth=authObject(gOptions.config)
+        backupbaseurl=self.baseurl
+        self.baseurl="https://untappd.com/oauth"
+        self.params={
+            "client_id":auth.id,
+            "response_type":"token",
+            "redirect_url":gRedirectURL,
+            }
+        result=self.callApi("GET", "authenticate")
+        printverbose("auth", "Returned from callApi as {0}".format(result))
+        if result:
+            printdebug("auth", "Found response url: {0}".format(self.r.url))
+            parts=requests.packages.urllib3.urlparse(self.r.url, allow_fragments=True)
+            token=parts.fragment.split("=")
+            printdebug("auth", "Got token parts {0} = {1}".format(token[0], token[1]))
+            auth.token=token[1]
+            self.authenticated=True
+            self.params["access_token"]=auth.token
+
+        self.baseurl=backupbaseurl
+        return result
+
+    def callApi(self, verb, method):
+        self.result=False
+        printdebug("callapi", "Entering with verb {0}".format("verb"))
+        url="{0}/{1}/".format(self.baseurl, method)
+        if verb=="GET":
+            printdebug("callapi", "GET {0} with params {1}".format(url, self.params))
+            self.r=self.s.get(url, params=self.params)
+        elif verb=="POST":
+            printdebug("callapi", "POST {0} with params {1}".format(url, self,params))
+            self.r=self.s.post(rul, params=self.params)
+        elif verb=="PUT":
+            printdebug("callapi", "PUT {0} with params {1}".format(url, self,params))
+            self.r=self.s.put(rul, params=self.params)
+        self.saveresponses()
+        if self.r.status_code== requests.codes.ok:
+            printdebug("callapi", "requests says our sattus code {0} is ok.".format(self.r.status_code))
+            self.result=True
+        else:
+            printwarn("callapi", "Requests didn't like our status code {0}.".format(self.r.status_code))
+            printerror("callapi", self.responses["friendly"])
+            printverbose("callapi", self.responses["error_type"])
+            printverbose("callapi", self.responses["error"])
+
+        return self.result
+
 
 
 class test(pytappdObject):
@@ -161,13 +264,8 @@ def do(objtype, **kwargs):
     return objtype.actions[action]()
 
 def runUntappd(self, argv=None):
-    global gOptions
+    global gOptions, gMultiple
     parser=argparse.ArgumentParser(description="Untappd Python CLI client")
-    parser.add_argument("-m" "--multiple",
-            action="store_true",
-            default=False,
-            help="Try to run the same thing/action on lots of input?",
-            )
     parser.add_argument("-b", "--beer",
             type=str,
             help="Name or ID of the beer in question.",
@@ -209,12 +307,7 @@ def runUntappd(self, argv=None):
             )
     gOptions=parser.parse_args(argv)
 
-    authconfig=None
-    if gPythonv==3:
-        authconfig=configparser.ConfigParser()
-    elif gPythonv==2:
-        authconfig=ConfigParser.ConfigParser()
-    authconfig.read(gOptions.config)
+    config=authObject(gOptions.config)
     mything=""
     if gOptions.thing in gTypes:
         mything=gTypes[gOptions.thing]
@@ -225,7 +318,7 @@ def runUntappd(self, argv=None):
         for mything in sorted(gTypes.items(), key=operator.itemgetter(1)):
         #for mything in gClasses.items():
             #print("    " + mything[0].ljust(20, " ") + "= " + gClasses[mything[0]])
-            print("    {}= {}".format(mything[0].ljust(20, " "), gTypes[mything[0]]))
+            print("    {0}= {1}".format(mything[0].ljust(20, " "), gTypes[mything[0]]))
         sys.exit(1)
     else:
         printerror("main", "invalid thing requested. Use -t help for a full list")
@@ -253,7 +346,7 @@ def runUntappd(self, argv=None):
         printerror("main", "invalid action '{0}' for type {1}".format(gOptions.action, mything))
         sys.exit(2)
 
-    if gOptions.multiple:
+    if gMultiple:
         if gOptions.file:
             gMultiple=open(gOptions.file)
 
@@ -290,12 +383,12 @@ def runUntappd(self, argv=None):
         do(untappd, act=gOptions.action)
 
     printdebug("main", str(untappd))
-    untappd.signAppout()
+    #untappd.signAppout()
     printverbose("main", "Now we are done.")
     if 200<=untappd.result<300:
         untappd.result=0
         #change 200 status codes to 0 for unix safe exiting
-    sys.exit(pbps.result)
+    sys.exit(untappd.result)
 
 
 def striplist(l):
@@ -362,6 +455,9 @@ for k,v in gClasses.items():
 
 if __name__ == "__main__":
     import sys
+    if not (sys.stdout.isatty() and sys.stdin.isatty()):
+        #Are in some kind of pipeline, so disabling interactive input.
+        gInteractive=False
     if not sys.stdin.isatty():
         gMultiple=sys.stdin
         gOptions.multiple=True
