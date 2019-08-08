@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-gVers = "0.2"
+gVers = "0.3"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse
+from urllib.parse import urlparse
 
 ##################################################################################
 #
@@ -74,6 +75,12 @@ except ImportError:
     if gInteractive:
         print("WARNING: Your version of requests includes an older urllib3. If you are using '-i' you will still get warnings. (This will not print in scripts.)")
 
+try:
+    from simplejson.errors import JSONDecodeError
+except ImportError:
+    print("ERROR: Can't set up decoder errors!")
+    sys.exit(2)
+
 gSession=requests.Session()
 gMultiple=None
 gOptions=None
@@ -84,7 +91,7 @@ class authObject(object):
         printdebug("authObject", "Initializing {0}".format(config))
         self.authconfig=None
         self.authenticated=False
-        self.id=None
+        self.id=0
         self.token=None
         self.name=config
         if gPythonv==3:
@@ -97,24 +104,33 @@ class authObject(object):
         if "Authorization" in self.authconfig:
             printdebug("authObject", "Found Authorization section")
             if self.authconfig["Authorization"]["clientid"]:
+                self.authconfig["Authorization"]["clientid"]=self.authconfig["Authorization"]["clientid"].strip('"')
+                self.authconfig["Authorization"]["clientid"]=self.authconfig["Authorization"]["clientid"].strip("'")
                 printverbose("authObject", "Set Clientid to {0}".format(self.authconfig["Authorization"]["clientid"]))
                 self.id=self.authconfig["Authorization"]["clientid"]
             if self.authconfig["Authorization"].get("token", False):
+                self.authconfig["Authorization"]["token"]=self.authconfig["Authorization"]["token"].strip('"')
+                self.authconfig["Authorization"]["token"]=self.authconfig["Authorization"]["token"].strip("'")
                 printverbose("authObject", "Set Token to {0}".format(self.authconfig["Authorization"]["token"]))
                 self.token=self.authconfig["Authorization"]["token"]
                 self.authenticated=True
             elif self.authconfig["Authorization"].get("Access_token", False):
+                self.authconfig["Authorization"]["access_token"]=self.authconfig["Authorization"]["access_token"].strip('"')
+                self.authconfig["Authorization"]["access_token"]=self.authconfig["Authorization"]["access_token"].strip("'")
                 printverbose("authObject", "Set Token to {0}".format(self.authconfig["Authorization"]["access_token"]))
                 self.token=self.authconfig["Authorization"]["access_token"]
                 self.authenticated=True
             printdebug("authObject", "Initialization complete, have id: {0}, and token {1}".format(self.id, self.token))
         else:
             printwarn("authObject", "No Authorization section found, does the file {0} exist?!")
-            return False
 
 
-    def save(self, configfile):
+    def save(self, **kwargs):
         printinfo("authObject", "Saving configuration as new file.")
+        configfile=self.name
+        if kwargs.get("config", False):
+            printinfo("authObject", "Overriding file to: {0}".format(kwargs["config"]))
+            configfile=kwargs["config"]
         if self.token:
             printinfo("authObject", "storing access token: {0}".format(self.token))
             self.authconfig["Authorization"]["Access_Token"]=self.token
@@ -122,13 +138,15 @@ class authObject(object):
             printinfo("authObject", "storing Client ID: {0}".format(self.id))
             self.authconfig["Authorization"]["ClientID"]=self.id
         with open(configfile, 'w') as filename:
-           self.authconfig.write(filename)
+            result=self.authconfig.write(filename)
+        return result
 
 
     def default(self, configfile):
         printinfo("authObject", "Writing new auth object!")
         self.authconfig["Authorization"]["ClientID"]="dummy"
-        self.save(configfile)
+        result=self.save(configfile)
+        return result
 
 
 
@@ -137,30 +155,63 @@ class pytappdObject(object):
         global gSession
         self.s=gSession
         self.name = name
+        self.id=0
         self.r=None
         self.result=False
         self.baseurl=gBaseUrl
         self.data=None
-        self.params=None
+        self.printheader=True
+        self.params={}
+        self.authObject=None
         self.responses={
                 "code":0,
-                "error": "None",
-                "error_type":"None",
-                "friendly":"None",
+                "error": "",
+                "error_type":"",
+                "friendly":"",
                 }
         self.actions={
-                #"json":self.json,
+                "json":self.json,
                 #"feed":self.checkins,
                 #"info":self.info,
                 "auth":self.auth,
                 }
+        self.headermap={
+                "name":"Name",
+                "id":"ID",
+                }
+        self.headers=[
+                "Name",
+                "ID",
+                ]
 
-    def saveresponses(self):
+    def vals(self):
+        melist=[]
         if self.r:
-            self.responses["code"]=self.r.status_code
-            self.responses["error"]=self.r.json("error_detail")
-            self.responses["error_type"]=self.r.json("error_type")
-            self.responses["friendly"]=self.r.json("developer_friendly")
+            for field in self.header:
+                try:
+                    melist.append(self.r.json()[field])
+                except KeyError:
+                    melist.append("Null")
+        return melist
+
+    def __iter__(self):
+        self.iterCount=0
+        return self
+
+    def __next__(self):
+        index=self.iterCount
+        self.iterCount+=1
+        try:
+            return self.headers[index]
+        except IndexError:
+            raise StopIteration
+
+    def __str__(self):
+        mestring=""
+        if self.r:
+            mestring=logsep.join(self.vals)
+        return mestring
+
 
     def auth(self, auth=None):
         printdebug("auth", "Need to auth online, backing up baseurl...")
@@ -174,23 +225,48 @@ class pytappdObject(object):
             "response_type":"token",
             "redirect_url":gRedirectURL,
             }
-        result=self.callApi("GET", "authenticate")
-        printverbose("auth", "Returned from callApi as {0}".format(result))
-        if result:
-            printdebug("auth", "Found response url: {0}".format(self.r.url))
-            parts=requests.packages.urllib3.urlparse(self.r.url, allow_fragments=True)
-            token=parts.fragment.split("=")
-            printdebug("auth", "Got token parts {0} = {1}".format(token[0], token[1]))
-            auth.token=token[1]
-            self.authenticated=True
-            self.params["access_token"]=auth.token
-
+        printline("Please visit the following URL in your brower.  Paste the response URL below:")
+        printline("{0}/authenticate/?client_id={1}&response_type=token&redirect_url={2}".format(self.baseurl, auth.id, requests.utils.quote(gRedirectURL)))
+        response_url=""
+        while response_url == "":
+            if gPythonv==2:
+                try:
+                    response_url=raw_input("Response URL: ")
+                except SyntaxError:
+                    retvals[req]=""
+                    #Python2 raises "SyntaxError: unexpected EOF while parsing" if you enter a blank value for input()
+                except KeyboardInterrupt:
+                    #cheater way of handling keyboard interrupts, instead of installing signal handlers at the top.
+                    sys.exit(1)
+            elif gPythonv==3:
+                try:
+                    response_url=input("Response URL: ")
+                except SyntaxError:
+                    retvals[req]=""
+                    #Python2 raises "SyntaxError: unexpected EOF while parsing" if you enter a blank value for input()
+                except KeyboardInterrupt:
+                    #cheater way of handling keyboard interrupts, instead of installing signal handlers at the top.
+                    sys.exit(1)
+        printdebug("callapi", "attempting to pull fragment from {0}".format(response_url))
+        parts=urlparse(response_url)
+        blah, auth.token=parts.fragment.split("=")
+        if not auth.token:
+            printerror("auth", "Failed to get an access token from: {0}".format(response_url))
+            return False
+        self.params["access_token"]=auth.token
+        self.authObject=auth
+        result=auth.save()
+        if not result:
+            printwarn("auth", "Failed to save auth file: {0}".format(auth.name))
+        printverbose("auth", "Found access token: {0}".format(auth.token))
         self.baseurl=backupbaseurl
-        return result
+        return True
 
     def callApi(self, verb, method):
         self.result=False
-        printdebug("callapi", "Entering with verb {0}".format("verb"))
+        if not self.authObject:
+            self.auth()
+        printdebug("callapi", "Entering with verb {0}".format(verb))
         url="{0}/{1}/".format(self.baseurl, method)
         if verb=="GET":
             printdebug("callapi", "GET {0} with params {1}".format(url, self.params))
@@ -207,13 +283,46 @@ class pytappdObject(object):
             self.result=True
         else:
             printwarn("callapi", "Requests didn't like our status code {0}.".format(self.r.status_code))
-            printerror("callapi", self.responses["friendly"])
+            printerror("callapi", "{0}: {1}".format(self.r.status_code, self.responses["friendly"]))
             printverbose("callapi", self.responses["error_type"])
             printverbose("callapi", self.responses["error"])
-
+            printdebug("callapi", "".format(self.r.history))
+            printdebug("callapi", self.r.url)
+            if self.r.headers.get("X-Ratelimit-Limit", False) and self.r.headers.get("X-Ratelimit-Remaining", False):
+                printdebug("callapi", "Rate limit: {0}, remaining: {1}".format(self.r.headers["X-Ratelimit-Limit"], self.r.headers["X-Ratelimit-Remaining"]))
         return self.result
 
+    def initFromJson(self, json):
+        printdebug("jsonInit", "Entering...")
+        #for key in self.header:
+        #    self.get(key)=
 
+    def json(self):
+        if self.r is not None:
+            if self.r.json():
+                return self.r.json()
+            else:
+                return self.r.text
+        else:
+            return ""
+
+    def saveresponses(self):
+        printdebug("saveResponse", "Trying to save self.r status codes.")
+        if self.r is not None:
+            self.responses["code"]=self.r.status_code
+            printdebug("saveResponse", "Code: {0}".format(self.responses["code"]))
+            printdebug("saveResponse", "JSON: {0}".format(self.r.text))
+            try:
+                self.responses["error"]=self.r.json()["error_detail"]
+                self.responses["error_type"]=self.r.json()["error_type"]
+                self.responses["friendly"]=self.r.json()["developer_friendly"]
+            except JSONDecodeError:
+                printinfo("saveResponse", "No JSON returned, only: {0}".format(self.r.text))
+        if self.responses["friendly"] is "" and self.r.text:
+            self.responses["friendly"] = self.r.text
+        printdebug("saveResponse", "Error: {0}".format(self.responses["error"]))
+        printdebug("saveResponse", "Type: {0}".format(self.responses["error_type"]))
+        printdebug("saveResponse", "Friendly: {0}".format(self.responses["friendly"]))
 
 class test(pytappdObject):
     def __init__(self, name):
@@ -238,9 +347,24 @@ signAppin: will report success only if username/key are right.
 class beer(pytappdObject):
     def __init__(self, name):
         pytappdObject.__init__(self,name)
+        self.brewery=brewery("null")
         self.help='''
 The beer object (TBD)
         '''
+        self.headermap={
+                "bid":"id",
+                "beer_name":"name",
+                "beer_style":"style",
+                "brewery_name":self.brewery.name,
+                "brewery_id":self.brewery.id,
+                }
+        self.headers=[
+                "ID",
+                "Name",
+                "Style",
+                "Brewery Name",
+                "Brewery ID",
+                ]
 
 class brewery(pytappdObject):
     def __init__(self, name):
@@ -248,6 +372,12 @@ class brewery(pytappdObject):
         self.help='''
 The brewery object (TBD)
         '''
+        self.header=[
+                "brewery_id",
+                "brewery_name",
+                "brewery_type",
+                "country_name",
+                ]
 
 class user(pytappdObject):
     def __init__(self, name):
@@ -291,7 +421,7 @@ def runUntappd(self, argv=None):
             help="The thing to do on the thing (search, lookup, check in)",
             )
     parser.add_argument("-v", "--loglevel",
-            default=0,
+            default=1,
             action="count",
             help="How Verbose to make the program (0-5)",
             )
