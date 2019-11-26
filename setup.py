@@ -18,6 +18,9 @@ setup(
     package_dir={'':'src'},
     packages=find_packages(where='src'),
     python_requires='>=2.7',
+    install_requires=[
+        'requests',
+        ],
     entry_points={
         'console_scripts': [
             'sample=sample:main',
