@@ -11,6 +11,7 @@ gVers = "0.4"
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
 from collections import defaultdict
+from cmd import Cmd
 
 ##################################################################################
 #
@@ -236,6 +237,40 @@ class dotappd(object):
                 "error_type":"",
                 "friendly":"",
                 }
+        self.paths={
+                "beer": {
+                "info": {
+                    "method": "GET",
+                    "path": "beer/info/",
+                    "send": int(),
+                    },
+                "search": {
+                    "method":"GET",
+                    "path": "search/beer",
+                    "send":str(),
+                    },
+                },
+                "brewery": {
+                "info": {
+                    "method": "GET",
+                    "path": "brewery/info/",
+                    "send": int(),
+                    },
+                "search": {
+                    "method":"GET",
+                    "path": "search/brewery/",
+                    "send":str(),
+                    "returns":brewery(),
+                    },
+                },
+                "user": {
+                "info": {
+                    "method": "GET",
+                    "path": "user/info/",
+                    "send": str(),
+                    },
+                }
+                }
 
     @property
     def json(self):
@@ -328,6 +363,19 @@ class dotappd(object):
                 logging.debug("callapi: Rate limit: {0}, remaining: {1}".format(self.r.headers["X-Ratelimit-Limit"], self.r.headers["X-Ratelimit-Remaining"]))
         return self.r.json()
 
+    def search(self, thing, val, kwargs={}):
+        '''abstraction for CallApi()
+        Call as dotappd.cmd(thing="beer", what="search", val="Dogfish 60 Minute")
+        '''
+        logging.debug("cmd: trying to do search on {0} with value: {1}".format(thing,val))
+        verb=self.paths[thing]["search"]["method"]
+        path=self.paths[thing]["search"]["path"]
+        if val:
+            logging.debug("search: adding '?q={0}' to URL.".format(val))
+            self.params.update({"q":val})
+        return self.callApi(verb=verb, method=path)
+
+
     def saveresponses(self):
         logging.debug("saveResponse: Trying to save self.r status codes.")
         if self.r is not None:
@@ -343,8 +391,8 @@ class dotappd(object):
                     self.responses["friendly"]=self.r.json()["meta"]["developer_friendly"]
                 except JSONDecodeError:
                     logging.info("saveResponse: No JSON returned, only: {0}".format(self.r.text))
-        if self.responses["friendly"] is "" and self.r.text:
-            self.responses["friendly"] = self.r.text
+        #if self.responses["friendly"] is "" and self.r.text:
+        #    self.responses["friendly"] = self.r.text
         logging.debug("saveResponse: Error: {0}".format(self.responses["error"]))
         logging.debug("saveResponse: Type: {0}".format(self.responses["error_type"]))
         logging.debug("saveResponse: Friendly: {0}".format(self.responses["friendly"]))
@@ -533,6 +581,36 @@ class pytappdObject(object):
 #########################################################################################################################################################
 #########################################################################################################################################################
 
+#line 537
+class dummy(pytappdObject):
+    '''Help!'''
+    def __init__(self, name="", json={}):
+        '''help!'''
+        if gPythonv==2:
+            super(beer,self).__init__()
+        else:
+            super().__init__()
+        self.apiName="dummy"
+        self.headers=[
+                "DI",
+                "Name",
+                ]
+        self.fields=[
+                'dummy_id',
+                'dummy_name',
+                ]
+        if json=={}:
+            logging.debug("Init {0} object empty.".format(self.apiName))
+            self.__name=name
+            self.brewery=brewery()
+        else:
+            logging.debug("Init {0} object from json.".format(self.apiName))
+            self.json=json
+            if self.json.get("brewery", False):
+                # User activity feed has brewery not underneath the beer itself.
+                self.brewery=brewery(json=self.json["brewery"])
+#line 571
+
 class beer(pytappdObject):
     """Beer!
 
@@ -594,18 +672,6 @@ class beer(pytappdObject):
                 "friends",
                 "vintages",
                 ]
-        self.paths={
-                "info": {
-                    "method": "GET",
-                    "path": "beer/info/",
-                    "send": int(),
-                    },
-                "search": {
-                    "method":"GET",
-                    "path": "search/beer/",
-                    "send":str(),
-                    }
-                }
         if json=={}:
             logging.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
@@ -667,18 +733,6 @@ The brewery object (TBD)
                 "media",
                 "beer_list",
                 ]
-        self.paths={
-                "info": {
-                    "method": "GET",
-                    "path": "brewery/info/",
-                    "send": int(),
-                    },
-                "search": {
-                    "method":"GET",
-                    "path": "search/brewery/",
-                    "send":str(),
-                    }
-                }
         if json=={}:
             logging.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
@@ -687,14 +741,59 @@ The brewery object (TBD)
             self.json=json
 
 class user(pytappdObject):
-    def __init__(self, name):
+    '''The user object (TBD)
+    '''
+    def __init__(self, name="", json={}):
         if gPythonv==2:
             super(user, self).__init__()
         else:
             super().__init__()
-        self.help='''
-The user object (TBD)
-        '''
+        self.apiName="user"
+        self.headers=[
+                "ID",
+                "Name",
+                "First Name",
+                "Last Name",
+                "Avatar",
+                "Cover Photo",
+                "Private?",
+                "Location",
+                "URL",
+                "Bio",
+                "Supporter?",
+                "Relationship",
+                "Untappd Link",
+                "Stats",
+                "Recent",
+                ]
+        self.fields=[
+                'uid',
+                'user_name',
+                'first_name',
+                'last_name',
+                'user_avatar',
+                'user_cover_photo',
+                'is_private',
+                'location',
+                'url',
+                'bio',
+                'is_supporter',
+                'relationship',
+                'untappd_url',
+                'stats',
+                'recent_brews',
+                ]
+        if json=={}:
+            logging.debug("Init {0} object empty.".format(self.apiName))
+            self.__name=name
+            self.brewery=brewery()
+        else:
+            logging.debug("Init {0} object from json.".format(self.apiName))
+            self.json=json
+            if self.json.get("brewery", False):
+                # User activity feed has brewery not underneath the beer itself.
+                self.brewery=brewery(json=self.json["brewery"])
+#line 571
 
 def do(objtype, **kwargs):
     logging.debug("dispatching action: {0}".format(kwargs["act"]))
@@ -885,10 +984,14 @@ if __name__ == "__main__":
 '''
 Testing notes:
 import pytappd
-ac=pytappd.authObject("./auth.ini")
-x=pytappd.dotappd("docsmooth")
-x.authObject=ac
-b=pytappd.beer(json=x.callApi(method="beer/info/3839"))
-for x in b:
-    print(str(x))
+ac=pytappd.authObject("../auth.ini")
+p=pytappd.dotappd("docsmooth")
+p.authObject=ac
+myj=p.search("beer", "Rogue 6 Hop")
+mybeers=[]
+for i in myj["response"]:
+    mybeers.append(pytappd.beer(i)
+for i in b:
+    print(str(i))
+u=pytappd.user(json=p.callApi(method="user/info"))
 '''
