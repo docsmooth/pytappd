@@ -20,6 +20,7 @@ setup(
     python_requires='>=2.7',
     install_requires=[
         'requests',
+        'cmd',
         ],
     entry_points={
         'console_scripts': [
