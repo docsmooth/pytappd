@@ -4,7 +4,7 @@ from setuptools import setup,find_packages
 
 setup(
     name='PyTappd',
-    version='0.4',
+    version='0.5',
     license='Creative Commons Attribution-Noncommercial-Share Alike license',
     author='Robert Auch',
     author_email='rauch@totalnetsolutions.net',

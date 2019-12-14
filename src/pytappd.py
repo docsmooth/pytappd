@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.4"
+gVers = "0.5"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -363,7 +363,7 @@ class dotappd(object):
                 logging.debug("callapi: Rate limit: {0}, remaining: {1}".format(self.r.headers["X-Ratelimit-Limit"], self.r.headers["X-Ratelimit-Remaining"]))
         return self.r.json()
 
-    def search(self, thing, val, kwargs={}):
+    def search(self, thing, val, offset=0, limit=50):
         '''abstraction for CallApi()
         Call as dotappd.cmd(thing="beer", what="search", val="Dogfish 60 Minute")
         '''
@@ -373,7 +373,70 @@ class dotappd(object):
         if val:
             logging.debug("search: adding '?q={0}' to URL.".format(val))
             self.params.update({"q":val})
-        return self.callApi(verb=verb, method=path)
+        if offset:
+            logging.debug("search: setting offset to: {0}".format(offset))
+            self.params.update({"offset":offset})
+        if limit:
+            logging.debug("search: setting limit to: {0}".format(limit))
+            self.params.update({"limit":limit})
+        return self.callApi(verb=verb, method=path)["response"]
+
+    def searchbeer(self, val):
+        logging.debug("searchbeer: trying to search for beer: {0}".format(val))
+        beerlist=[]
+        offset=0
+        found=100
+        limit=50
+        while offset+limit<found:
+            logging.debug("searchbeer: Asked for up to {0} beers, got {1}, starting at: {2}.".format(limit, found, offset))
+            myjson=self.search("beer", val, offset, limit)
+            found=myjson["found"]
+            for i in myjson["beers"]["items"]:
+                logging.info("searchbeer: Found {0}".format(i["beer"]["beer_name"]))
+                beerlist.append(beer(json=i["beer"]))
+            offset=offset+limit
+        logging.info("Returning {0} beers.".format(len(beerlist)))
+        return beerlist
+
+    def getBeerJson(self, val):
+        logging.debug("getbeer: trying to get beer: {0}".format(val))
+        try:
+            val=int(val)
+        except ValueError:
+            logging.error("Can't look up a beer by non-int values! Was passed: {0}".format(val))
+            return None
+        path="{0}/{1}".format(self.paths["beer"]["info"]["path"], val)
+        myjson=self.callApi(method=path, verb=self.paths["beer"]["info"]["method"])
+        return myjson["response"]["beer"]
+
+    def getBreweryJson(self, val):
+        logging.debug("getbrewery: trying to get brewery: {0}".format(val))
+        try:
+            val=int(val)
+        except ValueError:
+            logging.error("Can't look up a brewery by non-int values! Was passed: {0}".format(val))
+            return None
+        path="{0}/{1}".format(self.paths["brewery"]["info"]["path"], val)
+        myjson=self.callApi(method=path, verb=self.paths["brewery"]["info"]["method"])
+        return myjson["response"]["brewery"]
+
+    def searchbrewery(self, val):
+        logging.debug("searchbrewery: trying to search for brewery: {0}".format(val))
+        brewlist=[]
+        offset=0
+        found=100
+        limit=50
+        while offset+limit<found:
+            logging.debug("searchbrew: Asked for up to {0} brewerys, got {1}, starting at: {2}.".format(limit, found, offset))
+            myjson=self.search("brewery", val, offset, limit)
+            found=myjson["found"]
+            for i in myjson["brewery"]["items"]:
+                logging.info("searchbrew: Found {0}".format(i["brewery"]["brewery_name"]))
+                brewlist.append(brewery(json=i["brewery"]))
+            offset=offset+limit
+        logging.info("Returning {0} breweries.".format(len(brewlist)))
+        return brewlist
+
 
 
     def saveresponses(self):
@@ -683,6 +746,13 @@ class beer(pytappdObject):
                 # User activity feed has brewery not underneath the beer itself.
                 self.brewery=brewery(json=self.json["brewery"])
 
+    def update(self, apiobject):
+        logging.info("Trying to update online for ID: {0}".format(self.id))
+        if self.id==0:
+            logging.warning("Can't look up id 0 online, returning fail!")
+            return False
+        self.json=apiobject.getBeerJson(self.id)
+
 class brewery(pytappdObject):
     '''
 The brewery object (TBD)
@@ -739,6 +809,14 @@ The brewery object (TBD)
         else:
             logging.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
+
+    def update(self, apiobject):
+        logging.info("Trying to update online for ID: {0}".format(self.id))
+        if self.id==0:
+            logging.warning("Can't look up id 0 online, returning fail!")
+            return False
+        self.json=apiobject.getBreweryJson(self.id)
+
 
 class user(pytappdObject):
     '''The user object (TBD)
@@ -987,11 +1065,12 @@ import pytappd
 ac=pytappd.authObject("../auth.ini")
 p=pytappd.dotappd("docsmooth")
 p.authObject=ac
-myj=p.search("beer", "Rogue 6 Hop")
-mybeers=[]
-for i in myj["response"]:
-    mybeers.append(pytappd.beer(i)
-for i in b:
-    print(str(i))
+mybeers=p.searchbeer("Rogue Hop")
+for i in mybeers:
+    print(i.name)
+
+    i.update(p)
+
+
 u=pytappd.user(json=p.callApi(method="user/info"))
 '''
