@@ -336,18 +336,19 @@ class dotappd(object):
             self.authObject=authObject()
         if not self.params.get("access_token", False):
             logging.debug("callapi: Don't have an access token, adding from self.authObject {0}".format(self.authObject.token))
-            self.params.update({"access_token": self.authObject.token})
+            params.update({"access_token": self.authObject.token})
         logging.debug("callapi: Entering with verb {0}".format(verb))
         url="{0}/{1}/".format(self.baseurl, method)
+        params.update(self.params)
         if verb=="GET":
-            logging.debug("callapi: GET {0} with params {1}".format(url, self.params))
-            self.r=self.s.get(url, params=self.params)
+            logging.debug("callapi: GET {0} with params {1}".format(url, params))
+            self.r=self.s.get(url, params=params)
         elif verb=="POST":
-            logging.debug("callapi: POST {0} with params {1}".format(url, self,params))
-            self.r=self.s.post(url, params=self.params)
+            logging.debug("callapi: POST {0} with params {1}".format(url, params))
+            self.r=self.s.post(url, params=params)
         elif verb=="PUT":
-            logging.debug("callapi: PUT {0} with params {1}".format(url, self,params))
-            self.r=self.s.put(url, params=self.params)
+            logging.debug("callapi: PUT {0} with params {1}".format(url, params))
+            self.r=self.s.put(url, params=params)
         self.saveresponses()
         if self.r.status_code== requests.codes.ok:
             logging.debug("callapi: requests says our status code {0} is ok.".format(self.r.status_code))
@@ -370,16 +371,17 @@ class dotappd(object):
         logging.debug("cmd: trying to do search on {0} with value: {1}".format(thing,val))
         verb=self.paths[thing]["search"]["method"]
         path=self.paths[thing]["search"]["path"]
+        params={}
         if val:
             logging.debug("search: adding '?q={0}' to URL.".format(val))
-            self.params.update({"q":val})
+            params.update({"q":val})
         if offset:
             logging.debug("search: setting offset to: {0}".format(offset))
-            self.params.update({"offset":offset})
+            params.update({"offset":offset})
         if limit:
             logging.debug("search: setting limit to: {0}".format(limit))
-            self.params.update({"limit":limit})
-        return self.callApi(verb=verb, method=path)["response"]
+            params.update({"limit":limit})
+        return self.callApi(verb=verb, method=path, params=params)["response"]
 
     def searchbeer(self, val):
         logging.debug("searchbeer: trying to search for beer: {0}".format(val))
