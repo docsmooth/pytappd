@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.5"
+gVers = "0.6"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -36,6 +36,7 @@ except ImportError:
     logging.critical("ERROR: You can get it with either: ")
     logging.critical("ERROR:   yum -y install python35-pip; pip install requests")
     logging.critical("ERROR:   yum -y install python-requests")
+    logging.critical("ERROR:   pip install requests")
     logging.critical("ERROR: or your specific OS's package management system.")
     sys.exit(2)
 
@@ -239,37 +240,58 @@ class dotappd(object):
                 }
         self.paths={
                 "beer": {
-                "info": {
-                    "method": "GET",
-                    "path": "beer/info/",
-                    "send": int(),
+                    "info": {
+                        "method": "GET",
+                        "path": "beer/info/",
+                        "send": int(),
+                        },
+                    "search": {
+                        "method":"GET",
+                        "path": "search/beer",
+                        "send":str(),
+                        },
+                    "user": {
+                        "method": "GET",
+                        "path": "user/beers/",
+                        "send": str(),
+                        },
                     },
-                "search": {
-                    "method":"GET",
-                    "path": "search/beer",
-                    "send":str(),
-                    },
-                },
                 "brewery": {
-                "info": {
-                    "method": "GET",
-                    "path": "brewery/info/",
-                    "send": int(),
+                    "info": {
+                        "method": "GET",
+                        "path": "brewery/info/",
+                        "send": int(),
+                        },
+                    "search": {
+                        "method":"GET",
+                        "path": "search/brewery/",
+                        "send": str(),
+                        },
                     },
-                "search": {
-                    "method":"GET",
-                    "path": "search/brewery/",
-                    "send":str(),
-                    "returns":brewery(),
+                "actions": {
+                    "checkin": {
+                        "method": "POST",
+                        "path": "checkin/add",
+                        "send": dict(),
+                        },
+                    "toast": {
+                        "method": "POST",
+                        "path": "checkin/toast/",
+                        "send": int(),
+                        },
+                    "comment": {
+                        "method": "POST",
+                        "path": "checkin/addcomment/",
+                        "send": int(),
+                        },
                     },
-                },
                 "user": {
-                "info": {
-                    "method": "GET",
-                    "path": "user/info/",
-                    "send": str(),
+                    "info": {
+                        "method": "GET",
+                        "path": "user/info/",
+                        "send": str(),
+                        },
                     },
-                }
                 }
 
     @property
@@ -318,7 +340,7 @@ class dotappd(object):
             self.unsetJson
         self.__id = x
 
-    def callApi(self, method, verb="GET", params={}, **kwargs):
+    def __callApi(self, method, verb="GET", params={}, **kwargs):
         """Make any arbitrary call to the Untappd API using the requests library.
 
         Keyword Arguments:
@@ -364,7 +386,7 @@ class dotappd(object):
                 logging.debug("callapi: Rate limit: {0}, remaining: {1}".format(self.r.headers["X-Ratelimit-Limit"], self.r.headers["X-Ratelimit-Remaining"]))
         return self.r.json()
 
-    def search(self, thing, val, offset=0, limit=50):
+    def __search(self, thing, val, offset=0, limit=50):
         '''abstraction for CallApi()
         Call as dotappd.cmd(thing="beer", what="search", val="Dogfish 60 Minute")
         '''
@@ -381,24 +403,12 @@ class dotappd(object):
         if limit:
             logging.debug("search: setting limit to: {0}".format(limit))
             params.update({"limit":limit})
-        return self.callApi(verb=verb, method=path, params=params)["response"]
+        return self.__callApi(verb=verb, method=path, params=params)["response"]
 
-    def searchbeer(self, val):
-        logging.debug("searchbeer: trying to search for beer: {0}".format(val))
-        beerlist=[]
-        offset=0
-        found=100
-        limit=50
-        while offset+limit<found:
-            logging.debug("searchbeer: Asked for up to {0} beers, got {1}, starting at: {2}.".format(limit, found, offset))
-            myjson=self.search("beer", val, offset, limit)
-            found=myjson["found"]
-            for i in myjson["beers"]["items"]:
-                logging.info("searchbeer: Found {0}".format(i["beer"]["beer_name"]))
-                beerlist.append(beer(json=i["beer"]))
-            offset=offset+limit
-        logging.info("Returning {0} beers.".format(len(beerlist)))
-        return beerlist
+    def getBeer(self, val):
+        logging.debug("getbeer: trying to get beer: {0}".format(val))
+        myjson=self.getBeerJson(val)
+        return beer(json=myjson)
 
     def getBeerJson(self, val):
         logging.debug("getbeer: trying to get beer: {0}".format(val))
@@ -408,8 +418,30 @@ class dotappd(object):
             logging.error("Can't look up a beer by non-int values! Was passed: {0}".format(val))
             return None
         path="{0}/{1}".format(self.paths["beer"]["info"]["path"], val)
-        myjson=self.callApi(method=path, verb=self.paths["beer"]["info"]["method"])
+        myjson=self.__callApi(method=path, verb=self.paths["beer"]["info"]["method"])
         return myjson["response"]["beer"]
+
+    def searchbeer(self, val):
+        logging.debug("searchbeer: trying to search for beer: {0}".format(val))
+        beerlist=[]
+        offset=0
+        found=100
+        limit=50
+        while offset+limit<found:
+            logging.debug("searchbeer: Asked for up to {0} beers, got {1}, starting at: {2}.".format(limit, found, offset))
+            myjson=self.__search("beer", val, offset, limit)
+            found=myjson["found"]
+            for i in myjson["beers"]["items"]:
+                logging.info("searchbeer: Found {0}".format(i["beer"]["beer_name"]))
+                beerlist.append(beer(json=i["beer"]))
+            offset=offset+limit
+        logging.info("Returning {0} beers.".format(len(beerlist)))
+        return beerlist
+
+    def getBrewery(self, val):
+        logging.debug("getbrew: trying to get brewery: {0}".format(val))
+        myjson=self.getBreweryJson(val)
+        return brewery(json=myjson)
 
     def getBreweryJson(self, val):
         logging.debug("getbrewery: trying to get brewery: {0}".format(val))
@@ -419,7 +451,7 @@ class dotappd(object):
             logging.error("Can't look up a brewery by non-int values! Was passed: {0}".format(val))
             return None
         path="{0}/{1}".format(self.paths["brewery"]["info"]["path"], val)
-        myjson=self.callApi(method=path, verb=self.paths["brewery"]["info"]["method"])
+        myjson=self.__callApi(method=path, verb=self.paths["brewery"]["info"]["method"])
         return myjson["response"]["brewery"]
 
     def searchbrewery(self, val):
@@ -430,7 +462,7 @@ class dotappd(object):
         limit=50
         while offset+limit<found:
             logging.debug("searchbrew: Asked for up to {0} brewerys, got {1}, starting at: {2}.".format(limit, found, offset))
-            myjson=self.search("brewery", val, offset, limit)
+            myjson=self.__search("brewery", val, offset, limit)
             found=myjson["found"]
             for i in myjson["brewery"]["items"]:
                 logging.info("searchbrew: Found {0}".format(i["brewery"]["brewery_name"]))
@@ -439,7 +471,21 @@ class dotappd(object):
         logging.info("Returning {0} breweries.".format(len(brewlist)))
         return brewlist
 
+    def getUser(self, val):
+        logging.debug("getuser: trying to get user: {0}".format(val))
+        myjson=self.getUserJson(val)
+        return user(json=myjson)
 
+    def getUserJson(self, val=""):
+        logging.debug("getuser: trying to get user: {0}".format(val))
+        try:
+            val=str(val)
+        except ValueError:
+            logging.error("Can't look up a user by non-{1} values! Was passed: {2}".format(self.paths["user"]["info"]["send"], val))
+            return None
+        path="{0}/{1}".format(self.paths["user"]["info"]["path"], val)
+        myjson=self.__callApi(method=path, verb=self.paths["user"]["info"]["method"])
+        return myjson["response"]["user"]
 
     def saveresponses(self):
         logging.debug("saveResponse: Trying to save self.r status codes.")
@@ -608,7 +654,7 @@ class pytappdObject(object):
         global logsep
         mestring=""
         if self.json:
-            mestring=logsep.join(str(self.vals))
+            mestring=logsep.join(map(str, self.vals))
         return mestring
 
     def __int__(self):
@@ -646,7 +692,7 @@ class pytappdObject(object):
 #########################################################################################################################################################
 #########################################################################################################################################################
 
-#line 537
+# 28 lines:
 class dummy(pytappdObject):
     '''Help!'''
     def __init__(self, name="", json={}):
@@ -674,7 +720,6 @@ class dummy(pytappdObject):
             if self.json.get("brewery", False):
                 # User activity feed has brewery not underneath the beer itself.
                 self.brewery=brewery(json=self.json["brewery"])
-#line 571
 
 class beer(pytappdObject):
     """Beer!
@@ -819,6 +864,58 @@ The brewery object (TBD)
             return False
         self.json=apiobject.getBreweryJson(self.id)
 
+class media(pytappdObject):
+    '''Media object - Should only come back inside checkins or
+    venues.'''
+    def __init__(self, name="", json={}):
+        '''Initialize a Media object'''
+        if gPythonv==2:
+            super(media,self).__init__()
+        else:
+            super().__init__()
+        self.apiName="media"
+        self.headers=[
+                "ID",
+                "Photo",
+                "Created",
+                "Checkin ID",
+                "Beer",
+                "Brewery",
+                "User",
+                "Venue",
+                ]
+        self.fields=[
+                'photo_id',
+                'photo',
+                'created_at',
+                'checkin_id',
+                'beer',
+                'brewery',
+                'user',
+                'venue',
+                ]
+        if json=={}:
+            logging.debug("Init {0} object empty.".format(self.apiName))
+            self.__name=name
+            self.beer=beer()
+            self.brewery=brewery()
+            self.venue=venue()
+            self.user=user()
+        else:
+            logging.debug("Init {0} object from json.".format(self.apiName))
+            self.json=json
+            if self.json.get("beer", False):
+                logging.debug("This media has an associated beer.")
+                self.beer=beer(json=self.json["beer"])
+            if self.json.get("brewery", False):
+                logging.debug("This media has an associated brewery.")
+                self.brewery=brewery(json=self.json["brewery"])
+            if self.json.get("venue", False):
+                logging.debug("This media has an associated venue.")
+                self.venue=venue(json=self.json["venue"])
+            if self.json.get("user", False):
+                logging.debug("This media has an associated user.")
+                self.user=user(json=self.json["user"])
 
 class user(pytappdObject):
     '''The user object (TBD)
@@ -863,17 +960,79 @@ class user(pytappdObject):
                 'stats',
                 'recent_brews',
                 ]
+        self.beerlist=[]
         if json=={}:
             logging.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
-            self.brewery=brewery()
         else:
             logging.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
-            if self.json.get("brewery", False):
-                # User activity feed has brewery not underneath the beer itself.
-                self.brewery=brewery(json=self.json["brewery"])
-#line 571
+            if json.get("recent_brews", False):
+                for item in json["recent_brews"]["items"]:
+                    if item.get("beer_name", False):
+                        self.beerlist.append(beer(item))
+                        logging.info("Found beer: {0}".format(item["beer_name"]))
+                    elif item.get("brewery_name", False):
+                        self.beerlist.append(brewery(item))
+                        logging.info("Found brewery: {0}".format(item["brewery_name"]))
+                    else:
+                        logging.debug("Skipping location item.")
+
+class venue(pytappdObject):
+    '''Venue object - requires FourSquare City Lookup'''
+    def __init__(self, name="", json={}):
+        '''Initialize a Venue object'''
+        if gPythonv==2:
+            super(beer,self).__init__()
+        else:
+            super().__init__()
+        self.apiName="venue"
+        self.headers=[
+                "ID",
+                "Name",
+                "Last Updated",
+                "Category",
+                "Categories++",
+                "Stats",
+                "Icon",
+                "Public",
+                "Location",
+                "Contact",
+                "FourSquare",
+                "Media",
+                ]
+        self.fields=[
+                'venue_id',
+                'venue_name',
+                'last_updated',
+                'primary_category',
+                'categories',
+                'stats',
+                'venue_icon',
+                'public_venue',
+                'location',
+                'contact',
+                'foursquare',
+                'media',
+                ]
+        self.media=[]
+        if json=={}:
+            logging.debug("Init {0} object empty.".format(self.apiName))
+            self.__name=name
+        else:
+            logging.debug("Init {0} object from json.".format(self.apiName))
+            self.json=json
+            if json.get("media", False):
+                for item in json["media"]["items"]:
+                    self.media.append(media(item))
+                    logging.info("Found media ID: {0}".format(item["photo_id"]))
+
+    def update(self, apiobject):
+        logging.info("Trying to update online for ID: {0}".format(self.id))
+        if self.id==0:
+            logging.warning("Can't look up id 0 online, returning fail!")
+            return False
+        self.json=apiobject.getVenueJson(self.id)
 
 def do(objtype, **kwargs):
     logging.debug("dispatching action: {0}".format(kwargs["act"]))
@@ -1074,5 +1233,4 @@ for i in mybeers:
     i.update(p)
 
 
-u=pytappd.user(json=p.callApi(method="user/info"))
 '''
