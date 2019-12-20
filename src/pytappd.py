@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.6"
+gVers = "0.7"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -29,15 +29,16 @@ logsep="\t"
 #
 ##################################################################################
 logging.basicConfig(level=logging.DEBUG)
+mylog=logging.getLogger("pytappd")
 try:
     import requests
 except ImportError:
-    logging.critical("ERROR: You need to install the python requests library to use this tool!")
-    logging.critical("ERROR: You can get it with either: ")
-    logging.critical("ERROR:   yum -y install python35-pip; pip install requests")
-    logging.critical("ERROR:   yum -y install python-requests")
-    logging.critical("ERROR:   pip install requests")
-    logging.critical("ERROR: or your specific OS's package management system.")
+    mylog.critical("ERROR: You need to install the python requests library to use this tool!")
+    mylog.critical("ERROR: You can get it with either: ")
+    mylog.critical("ERROR:   yum -y install python35-pip; pip install requests")
+    mylog.critical("ERROR:   yum -y install python-requests")
+    mylog.critical("ERROR:   pip install requests")
+    mylog.critical("ERROR: or your specific OS's package management system.")
     sys.exit(2)
 
 # We're going to try to support both python2 and python3. We'll start
@@ -91,7 +92,7 @@ except ImportError:
 try:
     from simplejson.errors import JSONDecodeError
 except ImportError:
-    logging.critical("ERROR: Can't set up decoder errors!")
+    mylog.critical("ERROR: Can't set up decoder errors!")
     sys.exit(2)
 
 gSession=requests.Session()
@@ -105,46 +106,46 @@ class authObject(object):
             super(authObject, self).__init__()
         else:
             super().__init__()
-        logging.debug("authObject: Initializing {0}".format(config))
+        mylog.debug("authObject: Initializing {0}".format(config))
         self.authconfig=None
         self.authenticated=False
         self.id=0
         self.token=None
         self.name=config
         if gPythonv==3:
-            logging.debug("authObject: Python3 config parsing...")
+            mylog.debug("authObject: Python3 config parsing...")
             self.authconfig=configparser.ConfigParser()
         elif gPythonv==2:
-            logging.debug("authObject: Python2 config parsing...")
+            mylog.debug("authObject: Python2 config parsing...")
             self.authconfig=ConfigParser.ConfigParser()
         self.authconfig.read(config)
         if "Authorization" in self.authconfig:
-            logging.debug("authObject: Found Authorization section")
+            mylog.debug("authObject: Found Authorization section")
             if self.authconfig["Authorization"]["clientid"]:
                 self.authconfig["Authorization"]["clientid"]=self.authconfig["Authorization"]["clientid"].strip('"')
                 self.authconfig["Authorization"]["clientid"]=self.authconfig["Authorization"]["clientid"].strip("'")
-                logging.info("authObject: Set Clientid to {0}".format(self.authconfig["Authorization"]["clientid"]))
+                mylog.info("authObject: Set Clientid to {0}".format(self.authconfig["Authorization"]["clientid"]))
                 self.id=self.authconfig["Authorization"]["clientid"]
             if self.authconfig["Authorization"].get( "token", False):
                 self.authconfig["Authorization"]["token"]=self.authconfig["Authorization"]["token"].strip('"')
                 self.authconfig["Authorization"]["token"]=self.authconfig["Authorization"]["token"].strip("'")
-                logging.info("authObject: Set Token to {0}".format(self.authconfig["Authorization"]["token"]))
+                mylog.info("authObject: Set Token to {0}".format(self.authconfig["Authorization"]["token"]))
                 self.token=self.authconfig["Authorization"]["token"]
                 self.authenticated=True
             elif self.authconfig["Authorization"].get("access_token", False):
                 self.authconfig["Authorization"]["access_token"]=self.authconfig["Authorization"]["access_token"].strip('"')
                 self.authconfig["Authorization"]["access_token"]=self.authconfig["Authorization"]["access_token"].strip("'")
-                logging.info("authObject: Set Token to {0}".format(self.authconfig["Authorization"]["access_token"]))
+                mylog.info("authObject: Set Token to {0}".format(self.authconfig["Authorization"]["access_token"]))
                 self.token=self.authconfig["Authorization"]["access_token"]
                 self.authenticated=True
-            logging.debug("authObject: Initialization complete, have id: {0}, and token {1}".format(self.id, self.token))
+            mylog.debug("authObject: Initialization complete, have id: {0}, and token {1}".format(self.id, self.token))
         else:
-            logging.warning("authObject: No Authorization section found, does the file {0} exist?!")
+            mylog.warning("authObject: No Authorization section found, does the file {0} exist?!")
         if not self.token:
             self.auth()
 
     def auth(self):
-        logging.debug("auth: Need to authenticate online...")
+        mylog.debug("auth: Need to authenticate online...")
         baseurl="https://untappd.com/oauth"
         printline("Please visit the following URL in your brower.  Paste the response URL below:")
         printline("{0}/authenticate/?client_id={1}&response_type=token&redirect_url={2}".format(baseurl, self.id, requests.utils.quote(gRedirectURL)))
@@ -168,29 +169,29 @@ class authObject(object):
                 except KeyboardInterrupt:
                     #cheater way of handling keyboard interrupts, instead of installing signal handlers at the top.
                     sys.exit(1)
-        logging.debug("auth: attempting to pull fragment from {0}".format(response_url))
+        mylog.debug("auth: attempting to pull fragment from {0}".format(response_url))
         parts=urlparse(response_url)
         blah, self.token=parts.fragment.split("=")
         if not self.token:
-            logging.error("auth: Failed to get an access token from: {0}".format(response_url))
+            mylog.error("auth: Failed to get an access token from: {0}".format(response_url))
             return False
         result=self.save()
         if not result:
-            logging.warning("auth: Failed to save auth file: {0}".format(self.name))
-        logging.info("auth: Found access token: {0}".format(self.token))
+            mylog.warning("auth: Failed to save auth file: {0}".format(self.name))
+        mylog.info("auth: Found access token: {0}".format(self.token))
         return True
 
     def save(self, **kwargs):
-        logging.info("authObject: Saving configuration as new file.")
+        mylog.info("authObject: Saving configuration as new file.")
         configfile=self.name
         if kwargs.get("config", False):
-            logging.info("authObject: Overriding file to: {0}".format(kwargs["config"]))
+            mylog.info("authObject: Overriding file to: {0}".format(kwargs["config"]))
             configfile=kwargs["config"]
         if self.token:
-            logging.info("authObject: storing access token: {0}".format(self.token))
+            mylog.info("authObject: storing access token: {0}".format(self.token))
             self.authconfig["Authorization"]["Access_Token"]=self.token
         if self.id:
-            logging.info("authObject: storing Client ID: {0}".format(self.id))
+            mylog.info("authObject: storing Client ID: {0}".format(self.id))
             self.authconfig["Authorization"]["ClientID"]=self.id
         with open(configfile, 'w') as filename:
             result=self.authconfig.write(filename)
@@ -198,7 +199,7 @@ class authObject(object):
 
 
     def default(self, configfile):
-        logging.info("authObject: Writing new auth object!")
+        mylog.info("authObject: Writing new auth object!")
         self.authconfig["Authorization"]["ClientID"]="dummy"
         result=self.save(configfile)
         return result
@@ -243,29 +244,29 @@ class dotappd(object):
                     "info": {
                         "method": "GET",
                         "path": "beer/info/",
-                        "send": int(),
+                        "func": self.getBeer,
                         },
                     "search": {
                         "method":"GET",
                         "path": "search/beer",
-                        "send":str(),
+                        "func": self.searchbeer,
                         },
                     "user": {
                         "method": "GET",
                         "path": "user/beers/",
-                        "send": str(),
+                        "func": False,
                         },
                     },
                 "brewery": {
                     "info": {
                         "method": "GET",
                         "path": "brewery/info/",
-                        "send": int(),
+                        "func": self.getBrewery,
                         },
                     "search": {
                         "method":"GET",
                         "path": "search/brewery/",
-                        "send": str(),
+                        "func": self.searchbrewery,
                         },
                     },
                 "actions": {
@@ -312,7 +313,7 @@ class dotappd(object):
                 self.__json=copy.deepcopy(self.r.json())
                 # not going to validate if the HTTP we got back is valid data structure, cause I trust Greg
             except AttributeError:
-                logging.error("JSON not initialized from HTTP and none passed in, what happened?")
+                mylog.error("JSON not initialized from HTTP and none passed in, what happened?")
                 raise AttributeError
         else:
             self.__json=copy.deepcopy(json)
@@ -354,159 +355,159 @@ class dotappd(object):
         """
         self.result=False
         if not self.authObject:
-            logging.debug("callapi: Don't have an authentication object at all, initializing self.authObject.")
+            mylog.debug("callapi: Don't have an authentication object at all, initializing self.authObject.")
             self.authObject=authObject()
         if not self.params.get("access_token", False):
-            logging.debug("callapi: Don't have an access token, adding from self.authObject {0}".format(self.authObject.token))
+            mylog.debug("callapi: Don't have an access token, adding from self.authObject {0}".format(self.authObject.token))
             params.update({"access_token": self.authObject.token})
-        logging.debug("callapi: Entering with verb {0}".format(verb))
+        mylog.debug("callapi: Entering with verb {0}".format(verb))
         url="{0}/{1}/".format(self.baseurl, method)
         params.update(self.params)
         if verb=="GET":
-            logging.debug("callapi: GET {0} with params {1}".format(url, params))
+            mylog.debug("callapi: GET {0} with params {1}".format(url, params))
             self.r=self.s.get(url, params=params)
         elif verb=="POST":
-            logging.debug("callapi: POST {0} with params {1}".format(url, params))
+            mylog.debug("callapi: POST {0} with params {1}".format(url, params))
             self.r=self.s.post(url, params=params)
         elif verb=="PUT":
-            logging.debug("callapi: PUT {0} with params {1}".format(url, params))
+            mylog.debug("callapi: PUT {0} with params {1}".format(url, params))
             self.r=self.s.put(url, params=params)
         self.saveresponses()
         if self.r.status_code== requests.codes.ok:
-            logging.debug("callapi: requests says our status code {0} is ok.".format(self.r.status_code))
+            mylog.debug("callapi: requests says our status code {0} is ok.".format(self.r.status_code))
             self.result=True
         else:
-            logging.warning("callapi: Requests didn't like our status code {0}.".format(self.r.status_code))
-            logging.error("callapi: {0}: {1}".format(self.r.status_code, self.responses["friendly"]))
-            logging.info("callapi: {0}".format( self.responses["error_type"]))
-            logging.info("callapi: {0}".format(self.responses["error"]))
-            logging.debug("callapi: {0}".format(self.r.history))
-            logging.debug("callapi: {0}".format(self.r.url))
+            mylog.warning("callapi: Requests didn't like our status code {0}.".format(self.r.status_code))
+            mylog.error("callapi: {0}: {1}".format(self.r.status_code, self.responses["friendly"]))
+            mylog.info("callapi: {0}".format( self.responses["error_type"]))
+            mylog.info("callapi: {0}".format(self.responses["error"]))
+            mylog.debug("callapi: {0}".format(self.r.history))
+            mylog.debug("callapi: {0}".format(self.r.url))
             if self.r.headers.get("X-Ratelimit-Limit", False) and self.r.headers.get("X-Ratelimit-Remaining", False):
-                logging.debug("callapi: Rate limit: {0}, remaining: {1}".format(self.r.headers["X-Ratelimit-Limit"], self.r.headers["X-Ratelimit-Remaining"]))
+                mylog.debug("callapi: Rate limit: {0}, remaining: {1}".format(self.r.headers["X-Ratelimit-Limit"], self.r.headers["X-Ratelimit-Remaining"]))
         return self.r.json()
 
     def __search(self, thing, val, offset=0, limit=50):
         '''abstraction for CallApi()
         Call as dotappd.cmd(thing="beer", what="search", val="Dogfish 60 Minute")
         '''
-        logging.debug("cmd: trying to do search on {0} with value: {1}".format(thing,val))
+        mylog.debug("cmd: trying to do search on {0} with value: {1}".format(thing,val))
         verb=self.paths[thing]["search"]["method"]
         path=self.paths[thing]["search"]["path"]
         params={}
         if val:
-            logging.debug("search: adding '?q={0}' to URL.".format(val))
+            mylog.debug("search: adding '?q={0}' to URL.".format(val))
             params.update({"q":val})
         if offset:
-            logging.debug("search: setting offset to: {0}".format(offset))
+            mylog.debug("search: setting offset to: {0}".format(offset))
             params.update({"offset":offset})
         if limit:
-            logging.debug("search: setting limit to: {0}".format(limit))
+            mylog.debug("search: setting limit to: {0}".format(limit))
             params.update({"limit":limit})
         return self.__callApi(verb=verb, method=path, params=params)["response"]
 
     def getBeer(self, val):
-        logging.debug("getbeer: trying to get beer: {0}".format(val))
+        mylog.debug("getbeer: trying to get beer: {0}".format(val))
         myjson=self.getBeerJson(val)
         return beer(json=myjson)
 
     def getBeerJson(self, val):
-        logging.debug("getbeer: trying to get beer: {0}".format(val))
+        mylog.debug("getbeer: trying to get beer: {0}".format(val))
         try:
             val=int(val)
         except ValueError:
-            logging.error("Can't look up a beer by non-int values! Was passed: {0}".format(val))
+            mylog.error("Can't look up a beer by non-int values! Was passed: {0}".format(val))
             return None
         path="{0}/{1}".format(self.paths["beer"]["info"]["path"], val)
         myjson=self.__callApi(method=path, verb=self.paths["beer"]["info"]["method"])
         return myjson["response"]["beer"]
 
     def searchbeer(self, val):
-        logging.debug("searchbeer: trying to search for beer: {0}".format(val))
+        mylog.debug("searchbeer: trying to search for beer: {0}".format(val))
         beerlist=[]
         offset=0
         found=100
         limit=50
         while offset+limit<found:
-            logging.debug("searchbeer: Asked for up to {0} beers, got {1}, starting at: {2}.".format(limit, found, offset))
+            mylog.debug("searchbeer: Asked for up to {0} beers, got {1}, starting at: {2}.".format(limit, found, offset))
             myjson=self.__search("beer", val, offset, limit)
             found=myjson["found"]
             for i in myjson["beers"]["items"]:
-                logging.info("searchbeer: Found {0}".format(i["beer"]["beer_name"]))
+                mylog.info("searchbeer: Found {0}".format(i["beer"]["beer_name"]))
                 beerlist.append(beer(json=i["beer"]))
             offset=offset+limit
-        logging.info("Returning {0} beers.".format(len(beerlist)))
+        mylog.info("Returning {0} beers.".format(len(beerlist)))
         return beerlist
 
     def getBrewery(self, val):
-        logging.debug("getbrew: trying to get brewery: {0}".format(val))
+        mylog.debug("getbrew: trying to get brewery: {0}".format(val))
         myjson=self.getBreweryJson(val)
         return brewery(json=myjson)
 
     def getBreweryJson(self, val):
-        logging.debug("getbrewery: trying to get brewery: {0}".format(val))
+        mylog.debug("getbrewery: trying to get brewery: {0}".format(val))
         try:
             val=int(val)
         except ValueError:
-            logging.error("Can't look up a brewery by non-int values! Was passed: {0}".format(val))
+            mylog.error("Can't look up a brewery by non-int values! Was passed: {0}".format(val))
             return None
         path="{0}/{1}".format(self.paths["brewery"]["info"]["path"], val)
         myjson=self.__callApi(method=path, verb=self.paths["brewery"]["info"]["method"])
         return myjson["response"]["brewery"]
 
     def searchbrewery(self, val):
-        logging.debug("searchbrewery: trying to search for brewery: {0}".format(val))
+        mylog.debug("searchbrewery: trying to search for brewery: {0}".format(val))
         brewlist=[]
         offset=0
         found=100
         limit=50
         while offset+limit<found:
-            logging.debug("searchbrew: Asked for up to {0} brewerys, got {1}, starting at: {2}.".format(limit, found, offset))
+            mylog.debug("searchbrew: Asked for up to {0} brewerys, got {1}, starting at: {2}.".format(limit, found, offset))
             myjson=self.__search("brewery", val, offset, limit)
             found=myjson["found"]
             for i in myjson["brewery"]["items"]:
-                logging.info("searchbrew: Found {0}".format(i["brewery"]["brewery_name"]))
+                mylog.info("searchbrew: Found {0}".format(i["brewery"]["brewery_name"]))
                 brewlist.append(brewery(json=i["brewery"]))
             offset=offset+limit
-        logging.info("Returning {0} breweries.".format(len(brewlist)))
+        mylog.info("Returning {0} breweries.".format(len(brewlist)))
         return brewlist
 
     def getUser(self, val):
-        logging.debug("getuser: trying to get user: {0}".format(val))
+        mylog.debug("getuser: trying to get user: {0}".format(val))
         myjson=self.getUserJson(val)
         return user(json=myjson)
 
     def getUserJson(self, val=""):
-        logging.debug("getuser: trying to get user: {0}".format(val))
+        mylog.debug("getuser: trying to get user: {0}".format(val))
         try:
             val=str(val)
         except ValueError:
-            logging.error("Can't look up a user by non-{1} values! Was passed: {2}".format(self.paths["user"]["info"]["send"], val))
+            mylog.error("Can't look up a user by non-{1} values! Was passed: {2}".format(self.paths["user"]["info"]["send"], val))
             return None
         path="{0}/{1}".format(self.paths["user"]["info"]["path"], val)
         myjson=self.__callApi(method=path, verb=self.paths["user"]["info"]["method"])
         return myjson["response"]["user"]
 
     def saveresponses(self):
-        logging.debug("saveResponse: Trying to save self.r status codes.")
+        mylog.debug("saveResponse: Trying to save self.r status codes.")
         if self.r is not None:
             self.responses["code"]=self.r.status_code
-            logging.debug("saveResponse: Code: {0}".format(self.responses["code"]))
-            logging.debug("saveResponse: JSON: {0}".format(self.r.text))
+            mylog.debug("saveResponse: Code: {0}".format(self.responses["code"]))
+            mylog.debug("saveResponse: JSON: {0}".format(self.r.text))
             if self.r.status_code == 200:
-                logging.info("saveResponse: No Error, exiting saveResponses.")
+                mylog.info("saveResponse: No Error, exiting saveResponses.")
             else:
                 try:
                     self.responses["error"]=self.r.json()["meta"]["error_detail"]
                     self.responses["error_type"]=self.r.json()["meta"]["error_type"]
                     self.responses["friendly"]=self.r.json()["meta"]["developer_friendly"]
                 except JSONDecodeError:
-                    logging.info("saveResponse: No JSON returned, only: {0}".format(self.r.text))
+                    mylog.info("saveResponse: No JSON returned, only: {0}".format(self.r.text))
         #if self.responses["friendly"] is "" and self.r.text:
         #    self.responses["friendly"] = self.r.text
-        logging.debug("saveResponse: Error: {0}".format(self.responses["error"]))
-        logging.debug("saveResponse: Type: {0}".format(self.responses["error_type"]))
-        logging.debug("saveResponse: Friendly: {0}".format(self.responses["friendly"]))
+        mylog.debug("saveResponse: Error: {0}".format(self.responses["error"]))
+        mylog.debug("saveResponse: Type: {0}".format(self.responses["error_type"]))
+        mylog.debug("saveResponse: Friendly: {0}".format(self.responses["friendly"]))
 
 class pytappdObject(object):
     def __init__(self, name="", json={}):
@@ -549,32 +550,32 @@ class pytappdObject(object):
     @json.setter
     def json(self, json=None):
         if json==None:
-            logging.info("{0}: JSON not initialized from HTTP and none passed in, unsetting self.".format(self.name))
+            mylog.info("{0}: JSON not initialized from HTTP and none passed in, unsetting self.".format(self.name))
             self.id=0
             self.name=""
             self.__json=None
         else:
             #validate, then set
             if json.get("response"):
-                logging.info("we got back the FULL json from an API call, so we have to de-nest the {0} object.".format(self.apiName))
+                mylog.info("we got back the FULL json from an API call, so we have to de-nest the {0} object.".format(self.apiName))
                 searchdict=json["response"][self.apiName]
             else:
                 searchdict=json
-            #logging.debug("Now looking through object {0}".format(searchdict))
+            #mylog.debug("Now looking through object {0}".format(searchdict))
             for field in self.fields:
-                logging.debug("Looking up field {0} in json object.".format(field))
+                mylog.debug("Looking up field {0} in json object.".format(field))
                 if searchdict.get(field, None) is None:
                     # got a stub from somewhere else, so set as blank
-                    logging.info("{0}: JSON not valid for this object type, missing field {1}".format(self.name, field))
+                    mylog.info("{0}: JSON not valid for this object type, missing field {1}".format(self.name, field))
                     searchdict[field]=None
                 if re.search('id$', field, re.I):
                     self.id=searchdict[field]
-                    logging.info("found an ID field {0}, setting as ID: {1}".format(field, searchdict[field]))
+                    mylog.info("found an ID field {0}, setting as ID: {1}".format(field, searchdict[field]))
                 elif re.search(self.apiName + '.*name$', field, re.I):
                     self.name=searchdict[field]
-                    logging.info("found a name field {0}, setting as: {1}".format(field, searchdict[field]))
+                    mylog.info("found a name field {0}, setting as: {1}".format(field, searchdict[field]))
                 else:
-                    logging.debug("Field {0} is not name or id.".format(field))
+                    mylog.debug("Field {0} is not name or id.".format(field))
             self.__json=copy.deepcopy(searchdict)
             #self.__dict__=self.__json
 
@@ -592,7 +593,7 @@ class pytappdObject(object):
 
     @id.setter
     def id(self, x=0):
-        logging.debug("Setting id for {0} to {1}".format(self.apiName, x))
+        mylog.debug("Setting id for {0} to {1}".format(self.apiName, x))
         if x==0:
             self.unsetJson()
             self.__id=0
@@ -605,7 +606,7 @@ class pytappdObject(object):
 
     @name.setter
     def name(self,x=""):
-        logging.debug("Setting name for {0} to {1}".format(self.apiName, x))
+        mylog.debug("Setting name for {0} to {1}".format(self.apiName, x))
         try:
             if x=="":
                 self.unsetJson()
@@ -618,11 +619,11 @@ class pytappdObject(object):
         melist=[]
         if self.json:
             for field in self.fields:
-                #logging.debug("vals: Trying to find {0} in self.json.".format(field))
+                #mylog.debug("vals: Trying to find {0} in self.json.".format(field))
                 try:
                     if type(self.json[field]) != dict:
                         melist.append(str(self.json[field]))
-                        #logging.debug("vals: Found {0}".format(self.json[field]))
+                        #mylog.debug("vals: Found {0}".format(self.json[field]))
                     else:
                         melist.append("{}")
                 except KeyError:
@@ -711,11 +712,11 @@ class dummy(pytappdObject):
                 'dummy_name',
                 ]
         if json=={}:
-            logging.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.brewery=brewery()
         else:
-            logging.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("brewery", False):
                 # User activity feed has brewery not underneath the beer itself.
@@ -783,20 +784,20 @@ class beer(pytappdObject):
                 "vintages",
                 ]
         if json=={}:
-            logging.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.brewery=brewery()
         else:
-            logging.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("brewery", False):
                 # User activity feed has brewery not underneath the beer itself.
                 self.brewery=brewery(json=self.json["brewery"])
 
     def update(self, apiobject):
-        logging.info("Trying to update online for ID: {0}".format(self.id))
+        mylog.info("Trying to update online for ID: {0}".format(self.id))
         if self.id==0:
-            logging.warning("Can't look up id 0 online, returning fail!")
+            mylog.warning("Can't look up id 0 online, returning fail!")
             return False
         self.json=apiobject.getBeerJson(self.id)
 
@@ -851,16 +852,16 @@ The brewery object (TBD)
                 "beer_list",
                 ]
         if json=={}:
-            logging.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
         else:
-            logging.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
 
     def update(self, apiobject):
-        logging.info("Trying to update online for ID: {0}".format(self.id))
+        mylog.info("Trying to update online for ID: {0}".format(self.id))
         if self.id==0:
-            logging.warning("Can't look up id 0 online, returning fail!")
+            mylog.warning("Can't look up id 0 online, returning fail!")
             return False
         self.json=apiobject.getBreweryJson(self.id)
 
@@ -895,26 +896,26 @@ class media(pytappdObject):
                 'venue',
                 ]
         if json=={}:
-            logging.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.beer=beer()
             self.brewery=brewery()
             self.venue=venue()
             self.user=user()
         else:
-            logging.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("beer", False):
-                logging.debug("This media has an associated beer.")
+                mylog.debug("This media has an associated beer.")
                 self.beer=beer(json=self.json["beer"])
             if self.json.get("brewery", False):
-                logging.debug("This media has an associated brewery.")
+                mylog.debug("This media has an associated brewery.")
                 self.brewery=brewery(json=self.json["brewery"])
             if self.json.get("venue", False):
-                logging.debug("This media has an associated venue.")
+                mylog.debug("This media has an associated venue.")
                 self.venue=venue(json=self.json["venue"])
             if self.json.get("user", False):
-                logging.debug("This media has an associated user.")
+                mylog.debug("This media has an associated user.")
                 self.user=user(json=self.json["user"])
 
 class user(pytappdObject):
@@ -962,21 +963,18 @@ class user(pytappdObject):
                 ]
         self.beerlist=[]
         if json=={}:
-            logging.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
         else:
-            logging.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
             if json.get("recent_brews", False):
                 for item in json["recent_brews"]["items"]:
-                    if item.get("beer_name", False):
-                        self.beerlist.append(beer(item))
-                        logging.info("Found beer: {0}".format(item["beer_name"]))
-                    elif item.get("brewery_name", False):
-                        self.beerlist.append(brewery(item))
-                        logging.info("Found brewery: {0}".format(item["brewery_name"]))
-                    else:
-                        logging.debug("Skipping location item.")
+                    if item.get("beer", False):
+                        x=beer(item)
+                        x.brewery=item.get("brewery", {})
+                        self.beerlist.append(x)
+                        mylog.info("Found beer: {0}".format(x.name))
 
 class venue(pytappdObject):
     '''Venue object - requires FourSquare City Lookup'''
@@ -1017,28 +1015,28 @@ class venue(pytappdObject):
                 ]
         self.media=[]
         if json=={}:
-            logging.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
         else:
-            logging.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
             if json.get("media", False):
                 for item in json["media"]["items"]:
                     self.media.append(media(item))
-                    logging.info("Found media ID: {0}".format(item["photo_id"]))
+                    mylog.info("Found media ID: {0}".format(item["photo_id"]))
 
     def update(self, apiobject):
-        logging.info("Trying to update online for ID: {0}".format(self.id))
+        mylog.info("Trying to update online for ID: {0}".format(self.id))
         if self.id==0:
-            logging.warning("Can't look up id 0 online, returning fail!")
+            mylog.warning("Can't look up id 0 online, returning fail!")
             return False
         self.json=apiobject.getVenueJson(self.id)
 
 def do(objtype, **kwargs):
-    logging.debug("dispatching action: {0}".format(kwargs["act"]))
-    logging.debug("passing arguments: {0}".format(kwargs))
+    mylog.debug("dispatching action: {0}".format(kwargs["act"]))
+    mylog.debug("passing arguments: {0}".format(kwargs))
     action=kwargs["act"]
-    logging.debug("running self.actions[{0}], which is: {1}".format(action, objtype.actions[action]))
+    mylog.debug("running self.actions[{0}], which is: {1}".format(action, objtype.actions[action]))
     return objtype.actions[action]
 
 def runUntappd(self, argv=None):
@@ -1086,56 +1084,38 @@ def runUntappd(self, argv=None):
     gOptions=parser.parse_args(argv)
 
     if gOptions.loglevel<=1:
-        logging.setLevel(logging.CRITICAL)
+        mylog.setLevel(logging.CRITICAL)
     elif gOptions.loglevel<=2:
-        logging.setLevel(logging.ERROR)
+        mylog.setLevel(logging.ERROR)
     elif gOptions.loglevel<=3:
-        logging.setLevel(logging.WARNING)
+        mylog.setLevel(logging.WARNING)
     elif gOptions.loglevel<=4:
-        logging.setLevel(logging.INFO)
+        mylog.setLevel(logging.INFO)
     elif gOptions.loglevel<=5:
-        logging.setLevel(logging.DEBUG)
+        mylog.setLevel(logging.DEBUG)
 
 
-    config=authObject()
-    mything=""
-    if gOptions.thing in gTypes:
-        mything=gTypes[gOptions.thing]
-    elif gOptions.thing in [ "help", "h", "?" ]:
+    #p=pytappd.dotappd("docsmooth")
+    #p.authObject==pytappd.authObject("../auth.ini")
+    #mybeers=p.searchbeer("Rogue Hop")
+    untappd=dotappd("")
+    untappd.authObject=authObject(gOptions.config)
+    mything=None
+    myfunc=None
+    if gOptions.thing in [ "help", "h", "?" ]:
         print("Valid API classes / things:")
         print("    Type this:".ljust(24, " ") + "= To get this Class")
         print("".ljust(43, "-"))
-        for mything in sorted(gTypes.items(), key=operator.itemgetter(1)):
+        for mything in sorted(untappd.paths, key=operator.itemgetter(1)):
         #for mything in gClasses.items():
             #print("    " + mything[0].ljust(20, " ") + "= " + gClasses[mything[0]])
-            print("    {0}= {1}".format(mything[0].ljust(20, " "), gTypes[mything[0]]))
+            print("    {0}= x".format(mything.ljust(20, " ") ))
         sys.exit(1)
+    elif gOptions.thing in untappd.paths:
+        mything=untappd.paths[gOptions.thing]
+        myfunc=untappd.paths[gOptions.thing][gOptions.action]["func"]
     else:
-        logging.error("invalid thing requested. Use -t help for a full list")
-        sys.exit(2)
-    untappd=None
-    logging.debug("Trying to launch thing: {0}".format(mything))
-    untappd=gClasses.get(mything, False)(mything)
-
-    #untappd can come back as false, so that we can do help statements below
-    if untappd:
-        logging.debug(str(untappd))
-        #attach the configuration/authentication to the object we're using
-        untappd.auth=config
-
-    if gOptions.action in untappd.actions:
-        #action=pbps.actions[gOptions.action]
-        # don't need to map this - the dispatch is smarter than that
-        logging.debug("found action {0} for type {1}".format(gOptions.action, gOptions.thing))
-    elif gOptions.action in [ "help", "h", "?" ]:
-        print("Valid Actions for API class: {0}".format(mything))
-        for action in untappd.actions:
-            print("    " + action )
-        print("       " + untappd.help)
-        print("Use '-t {0} -a <action> --show' for a list of required arguments for each action.".format(mything))
-        sys.exit(2)
-    else:
-        logging.error("invalid action '{0}' for type {1}".format(gOptions.action, mything))
+        mylog.error("invalid thing requested. Use -t help for a full list")
         sys.exit(2)
 
     if gMultiple:
@@ -1145,38 +1125,38 @@ def runUntappd(self, argv=None):
         headerline=gMultiple.readline().replace('\r', "")
         headerline=headerline.replace('\n', "")
         fields=headerline.split(logsep)
-        logging.debug("{0} fields: {1}".format(len(fields), headerline))
+        mylog.debug("{0} fields: {1}".format(len(fields), headerline))
         line=gMultiple.readline()
         printheader=True
         while line!="":
             line = line.replace('\r', "")
             line = line.replace('\n', "")
-            logging.info("reading line: {0}".format(line))
+            mylog.info("reading line: {0}".format(line))
             parts=line.split(logsep)
-            untappd=gClasses.get(mything)(mything)
             try:
                 for i in range(len(fields)):
                     if (not hasattr(gOptions, fields[i])) or (not getattr(gOptions, fields[i], False)):
-                        untappd.reqdata[fields[i]]=parts[i]
-                        logging.info("field {0} to value {1}.".format(fields[i], parts[i]))
+                        mylog.info("field {0} to value {1}.".format(fields[i], parts[i]))
                     else:
-                        logging.info("{0} from file with {1}.".format(fields[i], getattr(gOptions, fields[i])))
+                        mylog.info("{0} from file with {1}.".format(fields[i], getattr(gOptions, fields[i])))
             except IndexError:
-                logging.error("mismatch - there are too few fields in the line: ")
-                logging.error(line)
-                logging.error("Expected {0} fields.".format(len(fields)))
+                mylog.error("mismatch - there are too few fields in the line: ")
+                mylog.error(line)
+                mylog.error("Expected {0} fields.".format(len(fields)))
                 sys.exit(4)
-            untappd.printheader=printheader
-            do(untappd, act=gOptions.action)
             line=gMultiple.readline()
             printheader=False  #this will disable printing headers in the rest of the objects we print out, so that an easier report can be saved
 
     else:
-        do(untappd, act=gOptions.action)
+        p=myfunc(vars(gOptions).get(gOptions.thing, ""))
+        if type(p) == list:
+            print(logsep.join(p[0].headers))
+        else:
+            print(logsep.join(p.headers))
+        for i in p:
+            print("{0}".format(i))
 
-    logging.debug(str(untappd))
-    #untappd.signAppout()
-    logging.info("we are done.")
+    mylog.info("we are done.")
     if 200<=untappd.result<300:
         untappd.result=0
         #change 200 status codes to 0 for unix safe exiting
@@ -1194,22 +1174,6 @@ def printline(line):
     except brokenpipeerror:
         sys.exit(32)
 
-# add each class here, both in case-insensitive (for the user) and case-sensitive (for the program) formats, as below:
-#    "commandline": className,
-#    "className": className,
-# if you get an error:
-#     pbps=gPBPSClasses.get(mything, False)(mything)
-# TypeError: 'bool' object is not callable
-# Then you didn't include the 2nd case-sensitive line
-gClasses={
-        "beer": beer,
-        "user": user,
-        "brewery": brewery,
-        }
-gTypes={}
-for k,v in gClasses.items():
-    gTypes[k] = v.__name__
-
 if __name__ == "__main__":
     import sys
     if not (sys.stdout.isatty() and sys.stdin.isatty()):
@@ -1223,9 +1187,8 @@ if __name__ == "__main__":
 '''
 Testing notes:
 import pytappd
-ac=pytappd.authObject("../auth.ini")
 p=pytappd.dotappd("docsmooth")
-p.authObject=ac
+p.authObject==pytappd.authObject("../auth.ini")
 mybeers=p.searchbeer("Rogue Hop")
 for i in mybeers:
     print(i.name)
