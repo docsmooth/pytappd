@@ -2,6 +2,8 @@
 Untappd Python CLI client
 
 ## History
+### Version 0.8:
+Check in added, works. Assumes first beer by name search, otherwise search and check in by ID. Need to add venue
 ### Version 0.7:
 FIRST VERSION THAT WORKS FROM CLI
 Although you still can't check in.

@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.7"
+gVers = "0.8"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -274,6 +274,7 @@ class dotappd(object):
                         "method": "POST",
                         "path": "checkin/add",
                         "send": dict(),
+                        "func": self.checkin,
                         },
                     "toast": {
                         "method": "POST",
@@ -367,8 +368,12 @@ class dotappd(object):
             mylog.debug("callapi: GET {0} with params {1}".format(url, params))
             self.r=self.s.get(url, params=params)
         elif verb=="POST":
-            mylog.debug("callapi: POST {0} with params {1}".format(url, params))
-            self.r=self.s.post(url, params=params)
+            if self.data:
+                mylog.debug("callapi: POST {0} with params {1} and data: {2}".format(url, params, self.data))
+                self.r=self.s.post(url, params=params, data=self.data)
+            else:
+                mylog.debug("callapi: POST {0} with params {1}".format(url, params))
+                self.r=self.s.post(url, params=params)
         elif verb=="PUT":
             mylog.debug("callapi: PUT {0} with params {1}".format(url, params))
             self.r=self.s.put(url, params=params)
@@ -405,6 +410,50 @@ class dotappd(object):
             mylog.debug("search: setting limit to: {0}".format(limit))
             params.update({"limit":limit})
         return self.__callApi(verb=verb, method=path, params=params)["response"]
+
+    def checkin(self, val, **kwargs):
+        mylog.debug("checkin: trying to check in beer: {0}".format(val))
+        if not val:
+            mylog.debug("checkin: no value {0}, looking in kwargs dict.".format(val))
+            val=gOptions.beer
+            mylog.debug("checkin: no value {0}, looking in kwargs dict.".format(val))
+        mybeer=None
+        verb=self.paths["actions"]["checkin"]["method"]
+        path=self.paths["actions"]["checkin"]["path"]
+        if (val.isdigit()):
+            mylog.debug("checkin: Looking up beer by ID: {0}".format(val))
+            myjson=self.getBeerJson(val)
+            mybeer=beer(json=myjson)
+        else:
+            mylog.debug("checkin: Searching up beer by name: {0}".format(val))
+            beerlist=self.searchbeer(val)
+            mybeer=beerlist[0]
+        date=datetime.datetime.now(datetime.timezone.utc).astimezone()
+        utc_offset=date.utcoffset() / datetime.timedelta(seconds=1)
+        utc_offset=utc_offset / 3600
+        utc_offset=str(utc_offset)
+        self.data={
+                'timezone':"CDT",
+                'shout':"",
+                'gmt_offset':"-5",
+                'rating':0,
+                'bid':mybeer.id,
+                }
+        if kwargs.get("tz", False):
+            self.data["timezone"]=tz
+        else:
+            self.data["timezone"]="CDT"
+        if kwargs.get("shout", False):
+            self.data["shout"]=kwargs["shout"]
+        elif gOptions.shout:
+            self.data["shout"]=gOptions.shout
+        if kwargs.get("rating", False):
+            self.data["rating"]=kwargs["rating"]
+        elif gOptions.rating:
+            self.data["rating"]=gOptions.rating
+        myjson=self.__callApi(verb=verb, method=path, params=self.params)["response"]
+        return checkin(json=myjson)
+
 
     def getBeer(self, val):
         mylog.debug("getbeer: trying to get beer: {0}".format(val))
@@ -556,7 +605,7 @@ class pytappdObject(object):
             self.__json=None
         else:
             #validate, then set
-            if json.get("response"):
+            if json.get("response", False):
                 mylog.info("we got back the FULL json from an API call, so we have to de-nest the {0} object.".format(self.apiName))
                 searchdict=json["response"][self.apiName]
             else:
@@ -865,6 +914,74 @@ The brewery object (TBD)
             return False
         self.json=apiobject.getBreweryJson(self.id)
 
+class checkin(pytappdObject):
+    '''Check in a beer!
+    Requires a beer, a user, a timezone, and a gmt offset'''
+    def __init__(self, name="", json={}):
+        '''The check-in object'''
+        if gPythonv==2:
+            super(pytappdObject,self).__init__()
+        else:
+            super().__init__()
+        self.apiName="checkin"
+        self.headers=[
+                "Checkin ID"
+                "Result",
+                "Badge_Valid",
+                "Created At",
+                "Comment",
+                "Stats",
+                "Rating",
+                "User",
+                "Beer",
+                "Brewery",
+                "Venue",
+                "Recommentations",
+                "Media_allowed",
+                "Source",
+                "Follow Status",
+                "Promotions",
+                "Badges",
+                ]
+        self.fields=[
+                'checkin_id',
+                'result',
+                'badge_valid',
+                'created_at',
+                'checkin_comment',
+                'stats',
+                'rating',
+                'user',
+                'beer',
+                'brewery',
+                'venue',
+                'recommendations',
+                'media_allowed',
+                'source',
+                'follow_status',
+                'promotions',
+                'badges',
+                ]
+        if json=={}:
+            mylog.debug("Init {0} object empty.".format(self.apiName))
+            self.__name=name
+            self.brewery=brewery()
+            self.beer=beer()
+        else:
+            mylog.debug("Init {0} object from json.".format(self.apiName))
+            self.json=json
+            if self.json.get("brewery", False):
+                # Checkin SHOULD have the brewery directly underneath the checkin
+                self.brewery=brewery(json=self.json["brewery"])
+            if self.json.get("beer", False):
+                # Checkin SHOULD have the beer directly underneath the checkin
+                self.beer=beer(json=self.json["beer"])
+            if self.json.get("media", False):
+                # Checkin will have media, unless the user didn't add a picture
+                self.media=media(json=self.json["media"])
+            else:
+                self.media=media()
+
 class media(pytappdObject):
     '''Media object - Should only come back inside checkins or
     venues.'''
@@ -1080,6 +1197,16 @@ def runUntappd(self, argv=None):
             type=str,
             help="regex to filter log output against.",
             default="",
+            )
+    parser.add_argument('-r', "--rating",
+            type=int,
+            help="Rating for beer checkin.",
+            default=0,
+            )
+    parser.add_argument('-s', "--shout",
+            type=str,
+            help="Comment for checkin or toast",
+            default=""
             )
     gOptions=parser.parse_args(argv)
 
