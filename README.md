@@ -4,9 +4,15 @@ Untappd Python CLI client
 ## History
 ### Version 0.10:
 Fill out lots of missing data in the object model for beer, brewery, and user
+
 Change the function calls to default id as well as name and json
+
 Change all calls to beer() and brewery() to set paramaters by name, not order
+
 Fully importable as an object class for other programs: see developer info at bottom of pytappd.py for examples
+
+Check in with: `python3 ./src/pytappd.py -b "sierra nevada 3 weight" -t actions -a checkin --shout "From the command line to your phone line" --rating 5 --twitter`
+
 ### Version 0.9:
 User lookup and checkin now return proper full objects (bug in child beer and brewery objects)
 ### Version 0.8:

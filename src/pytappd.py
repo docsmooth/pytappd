@@ -435,6 +435,7 @@ class dotappd(object):
         utc_offset=date.utcoffset() / datetime.timedelta(seconds=1)
         utc_offset=utc_offset / 3600
         utc_offset=str(utc_offset)
+        mylog.debug("Have UTC offset of {0} for date {1}".format(utc_offset, date))
         self.data={
                 'timezone':"CDT",
                 'shout':"",
@@ -448,12 +449,20 @@ class dotappd(object):
             self.data["timezone"]="CDT"
         if kwargs.get("shout", False):
             self.data["shout"]=kwargs["shout"]
-        elif gOptions.shout:
+        elif gOptions!=None and gOptions.shout:
             self.data["shout"]=gOptions.shout
         if kwargs.get("rating", False):
             self.data["rating"]=kwargs["rating"]
-        elif gOptions.rating:
+        elif gOptions!=None and gOptions.rating:
             self.data["rating"]=gOptions.rating
+        if kwargs.get("twitter", False):
+            self.data["twitter"]="on"
+        elif gOptions!=None and gOptions.twitter:
+            self.data["twitter"]="on"
+        if kwargs.get("facebook", False):
+            self.data["facebook"]="on"
+        elif gOptions!=None and gOptions.facebook:
+            self.data["facebook"]="on"
         myjson=self.__callApi(verb=verb, method=path, params=self.params)["response"]
         return checkin(json=myjson)
 
@@ -942,7 +951,7 @@ The brewery object (TBD)
             if json.get("beer_list", False):
                 mylog.info("Brewery {0} returned a beer list, filling it out.".format(self.name))
                 for b in json["beer_list"]["items"]:
-                    self.beerlist.append(beer(json=b))
+                    self.beerlist.append(beer(json=b["beer"]))
 
     def update(self, apiobject):
         mylog.info("Trying to update online {0}".format(self.name))
@@ -1269,7 +1278,15 @@ def runUntappd(self, argv=None):
     parser.add_argument('-s', "--shout",
             type=str,
             help="Comment for checkin or toast",
-            default=""
+            default="",
+            )
+    parser.add_argument('-i', '--twitter',
+            action='store_true',
+            help="Send the checkin to Twitter",
+            )
+    parser.add_argument('-z', '--facebook',
+            action='store_true',
+            help="Send the checkin to Facebook",
             )
     gOptions=parser.parse_args(argv)
 
