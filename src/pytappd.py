@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.8"
+gVers = "0.9"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -292,6 +292,7 @@ class dotappd(object):
                         "method": "GET",
                         "path": "user/info/",
                         "send": str(),
+                        "func": self.getUser,
                         },
                     },
                 }
@@ -615,7 +616,7 @@ class pytappdObject(object):
                 mylog.debug("Looking up field {0} in json object.".format(field))
                 if searchdict.get(field, None) is None:
                     # got a stub from somewhere else, so set as blank
-                    mylog.info("{0}: JSON not valid for this object type, missing field {1}".format(self.name, field))
+                    mylog.debug("{0}: JSON not valid for this object type, missing field {1}".format(self.name, field))
                     searchdict[field]=None
                 if re.search('id$', field, re.I):
                     self.id=searchdict[field]
@@ -624,7 +625,12 @@ class pytappdObject(object):
                     self.name=searchdict[field]
                     mylog.info("found a name field {0}, setting as: {1}".format(field, searchdict[field]))
                 else:
-                    mylog.debug("Field {0} is not name or id.".format(field))
+                    # the name and ID fields have different names for each subclass,
+                    # the point of this if/elif is to find those 2 fields in each json returned.
+                    #  the line below was debugging when I was writing this section, but it's a bit
+                    # too verbose for current code, so I'm replacing it with a 'pass'
+                    #mylog.debug("Field {0} is not name or id.".format(field))
+                    pass
             self.__json=copy.deepcopy(searchdict)
             #self.__dict__=self.__json
 
@@ -972,10 +978,10 @@ class checkin(pytappdObject):
             self.json=json
             if self.json.get("brewery", False):
                 # Checkin SHOULD have the brewery directly underneath the checkin
-                self.brewery=brewery(json=self.json["brewery"])
+                self.brewery=brewery(name=self.json["brewery_name"]["brewery_name"],json=self.json["brewery"])
             if self.json.get("beer", False):
                 # Checkin SHOULD have the beer directly underneath the checkin
-                self.beer=beer(json=self.json["beer"])
+                self.beer=beer(name=self.json["beer"]["beer_name"], json=self.json["beer"])
             if self.json.get("media", False):
                 # Checkin will have media, unless the user didn't add a picture
                 self.media=media(json=self.json["media"])
@@ -1088,8 +1094,9 @@ class user(pytappdObject):
             if json.get("recent_brews", False):
                 for item in json["recent_brews"]["items"]:
                     if item.get("beer", False):
-                        x=beer(item)
-                        x.brewery=item.get("brewery", {})
+                        mylog.debug("Found beer: {0}, which is raw: {1}.".format(item["beer"]["beer_name"], item))
+                        x=beer(item["beer"]["beer_name"], item["beer"])
+                        #x.brewery=item.get("brewery", {})
                         self.beerlist.append(x)
                         mylog.info("Found beer: {0}".format(x.name))
 

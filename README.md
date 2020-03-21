@@ -2,6 +2,8 @@
 Untappd Python CLI client
 
 ## History
+### Version 0.9:
+User lookup and checkin now return proper full objects (bug in child beer and brewery objects)
 ### Version 0.8:
 Check in added, works. Assumes first beer by name search, otherwise search and check in by ID. Need to add venue
 ### Version 0.7:
