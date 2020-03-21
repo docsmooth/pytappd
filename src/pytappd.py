@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.9"
+gVers = "0.10"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -30,6 +30,8 @@ logsep="\t"
 ##################################################################################
 logging.basicConfig(level=logging.DEBUG)
 mylog=logging.getLogger("pytappd")
+reqlog=logging.getLogger('requests.packages.urllib3')
+logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 try:
     import requests
 except ImportError:
@@ -138,7 +140,7 @@ class authObject(object):
                 mylog.info("authObject: Set Token to {0}".format(self.authconfig["Authorization"]["access_token"]))
                 self.token=self.authconfig["Authorization"]["access_token"]
                 self.authenticated=True
-            mylog.debug("authObject: Initialization complete, have id: {0}, and token {1}".format(self.id, self.token))
+            mylog.info("authObject: Initialization complete, have id: {0}, and token {1}".format(self.id, self.token))
         else:
             mylog.warning("authObject: No Authorization section found, does the file {0} exist?!")
         if not self.token:
@@ -560,7 +562,7 @@ class dotappd(object):
         mylog.debug("saveResponse: Friendly: {0}".format(self.responses["friendly"]))
 
 class pytappdObject(object):
-    def __init__(self, name="", json={}):
+    def __init__(self, objid=0, name="", json={}):
         '''all pytappd Objects can be initialized empty, or from a dict from r.json()["response"][thing]
         '''
         if gPythonv==2:
@@ -569,7 +571,7 @@ class pytappdObject(object):
             super().__init__()
         self.apiName="user"
         self.name = name
-        self.id=0
+        self.id=objid
         self.result=False
         self.printheader=True
         self.params={}
@@ -616,12 +618,13 @@ class pytappdObject(object):
                 mylog.debug("Looking up field {0} in json object.".format(field))
                 if searchdict.get(field, None) is None:
                     # got a stub from somewhere else, so set as blank
-                    mylog.debug("{0}: JSON not valid for this object type, missing field {1}".format(self.name, field))
+                    mylog.debug("{0}: JSON not complete for this object type, missing field {1}".format(self.name, field))
                     searchdict[field]=None
-                if re.search('id$', field, re.I):
+                if field==self.idfield:
+                    # some things return an id and a _type_id, so don't overwrite if we already have an id
                     self.id=searchdict[field]
                     mylog.info("found an ID field {0}, setting as ID: {1}".format(field, searchdict[field]))
-                elif re.search(self.apiName + '.*name$', field, re.I):
+                elif field==self.namefield:
                     self.name=searchdict[field]
                     mylog.info("found a name field {0}, setting as: {1}".format(field, searchdict[field]))
                 else:
@@ -707,11 +710,12 @@ class pytappdObject(object):
             raise StopIteration
 
     def __str__(self):
-        global logsep
-        mestring=""
-        if self.json:
-            mestring=logsep.join(map(str, self.vals))
-        return mestring
+        return self.name
+        #global logsep
+        #mestring=""
+        #if self.json:
+        #    mestring=logsep.join(map(str, self.vals))
+        #return mestring
 
     def __int__(self):
         return int(self.id)
@@ -751,13 +755,15 @@ class pytappdObject(object):
 # 28 lines:
 class dummy(pytappdObject):
     '''Help!'''
-    def __init__(self, name="", json={}):
+    def __init__(self, objid=0, name="", json={}):
         '''help!'''
         if gPythonv==2:
             super(beer,self).__init__()
         else:
             super().__init__()
         self.apiName="dummy"
+        self.namefield="dummy_name"
+        self.idfield="dummy_id"
         self.headers=[
                 "DI",
                 "Name",
@@ -769,7 +775,7 @@ class dummy(pytappdObject):
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
-            self.brewery=brewery()
+            self.__id=objid
         else:
             mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
@@ -784,7 +790,7 @@ class beer(pytappdObject):
     It may have a list of checkins nearby, a list of locations nearby, and other
     variable information, but the name and ID we can trust.
     """
-    def __init__(self, name="", json={}):
+    def __init__(self, objid=0, name="", json={}):
         """As of 0.4 this is initialized from json because someone
         looked up a beer."""
         if gPythonv==2:
@@ -792,6 +798,8 @@ class beer(pytappdObject):
         else:
             super().__init__()
         self.apiName="beer"
+        self.namefield="beer_name"
+        self.idfield="bid"
         self.headers=[
                 "ID",
                 "Name",
@@ -838,34 +846,52 @@ class beer(pytappdObject):
                 "friends",
                 "vintages",
                 ]
+        self.brewery=brewery()
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
-            self.brewery=brewery()
+            self.__id=objid
         else:
             mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("brewery", False):
+                mylog.info("{0} has a brewery json.".format(self.name))
                 # User activity feed has brewery not underneath the beer itself.
                 self.brewery=brewery(json=self.json["brewery"])
+            elif self.json.get("brewery_name"):
+                mylog.info("{0} has a brewery {1}, but no structure.".format(self.name, self.json["brewery_name"]))
+                self.brewery=brewery(name=self.json["brewery_name"])
+                self.brewery.id=self.json["brewery_id"]
 
     def update(self, apiobject):
         mylog.info("Trying to update online for ID: {0}".format(self.id))
-        if self.id==0:
+        if self.id==0 and self.name=="":
             mylog.warning("Can't look up id 0 online, returning fail!")
             return False
-        self.json=apiobject.getBeerJson(self.id)
+        if self.id!=0:
+            self=apiobject.getBeer(self.id)
+            return True
+        if self.name!="":
+            x=apiobject.searchbeer(self.name)
+            for b in x:
+                if b.name==self.name:
+                    self=b
+                    return True
+        return False
 
 class brewery(pytappdObject):
     '''
 The brewery object (TBD)
     '''
-    def __init__(self, name=None, json={}):
+    def __init__(self, objid=0, name="", json={}):
         if gPythonv==2:
             super(brewery, self).__init__()
         else:
             super().__init__()
         self.apiName="brewery"
+        self.namefield="brewery_name"
+        self.idfield="brewery_id"
+        self.beerlist=[]
         self.headers=[
                 "ID",
                 "Name",
@@ -909,27 +935,43 @@ The brewery object (TBD)
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
+            self.__id=objid
         else:
             mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
+            if json.get("beer_list", False):
+                mylog.info("Brewery {0} returned a beer list, filling it out.".format(self.name))
+                for b in json["beer_list"]["items"]:
+                    self.beerlist.append(beer(json=b))
 
     def update(self, apiobject):
-        mylog.info("Trying to update online for ID: {0}".format(self.id))
-        if self.id==0:
+        mylog.info("Trying to update online {0}".format(self.name))
+        if self.id==0 and self.name=="":
             mylog.warning("Can't look up id 0 online, returning fail!")
             return False
-        self.json=apiobject.getBreweryJson(self.id)
+        if self.id!=0:
+            self=apiobject.getBrewery(self.id)
+            return True
+        if self.name!="":
+            x=apiobject.searchbrewery(self.name)
+            for b in x:
+                if b.name==self.name:
+                    self=b
+                    return True
+        return False
 
 class checkin(pytappdObject):
     '''Check in a beer!
     Requires a beer, a user, a timezone, and a gmt offset'''
-    def __init__(self, name="", json={}):
+    def __init__(self, objid=0, name="", json={}):
         '''The check-in object'''
         if gPythonv==2:
             super(pytappdObject,self).__init__()
         else:
             super().__init__()
         self.apiName="checkin"
+        self.namefield="checkin_comment"
+        self.idfield="checkin_id"
         self.headers=[
                 "Checkin ID"
                 "Result",
@@ -968,8 +1010,13 @@ class checkin(pytappdObject):
                 'promotions',
                 'badges',
                 ]
+        self.beer=beer()
+        self.user=user()
+        self.brewery=brewery()
+        self.venue=venue()
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
+            self.__id=objid
             self.__name=name
             self.brewery=brewery()
             self.beer=beer()
@@ -978,10 +1025,10 @@ class checkin(pytappdObject):
             self.json=json
             if self.json.get("brewery", False):
                 # Checkin SHOULD have the brewery directly underneath the checkin
-                self.brewery=brewery(name=self.json["brewery_name"]["brewery_name"],json=self.json["brewery"])
+                self.brewery=brewery(json=self.json["brewery"])
             if self.json.get("beer", False):
                 # Checkin SHOULD have the beer directly underneath the checkin
-                self.beer=beer(name=self.json["beer"]["beer_name"], json=self.json["beer"])
+                self.beer=beer(json=self.json["beer"])
             if self.json.get("media", False):
                 # Checkin will have media, unless the user didn't add a picture
                 self.media=media(json=self.json["media"])
@@ -991,13 +1038,15 @@ class checkin(pytappdObject):
 class media(pytappdObject):
     '''Media object - Should only come back inside checkins or
     venues.'''
-    def __init__(self, name="", json={}):
+    def __init__(self, objid=0, name="", json={}):
         '''Initialize a Media object'''
         if gPythonv==2:
             super(media,self).__init__()
         else:
             super().__init__()
         self.apiName="media"
+        self.namefield="media_id"
+        self.idfield="media_id"
         self.headers=[
                 "ID",
                 "Photo",
@@ -1021,6 +1070,7 @@ class media(pytappdObject):
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
+            self.__id=objid
             self.beer=beer()
             self.brewery=brewery()
             self.venue=venue()
@@ -1044,12 +1094,14 @@ class media(pytappdObject):
 class user(pytappdObject):
     '''The user object (TBD)
     '''
-    def __init__(self, name="", json={}):
+    def __init__(self, objid=0, name="", json={}):
         if gPythonv==2:
             super(user, self).__init__()
         else:
             super().__init__()
         self.apiName="user"
+        self.namefield="user_name"
+        self.idfield="uid"
         self.headers=[
                 "ID",
                 "Name",
@@ -1088,6 +1140,7 @@ class user(pytappdObject):
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
+            self.__id=objid
         else:
             mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
@@ -1095,20 +1148,22 @@ class user(pytappdObject):
                 for item in json["recent_brews"]["items"]:
                     if item.get("beer", False):
                         mylog.debug("Found beer: {0}, which is raw: {1}.".format(item["beer"]["beer_name"], item))
-                        x=beer(item["beer"]["beer_name"], item["beer"])
-                        #x.brewery=item.get("brewery", {})
+                        x=beer(json=item["beer"])
+                        x.brewery=brewery(json=item.get("brewery", {}))
                         self.beerlist.append(x)
                         mylog.info("Found beer: {0}".format(x.name))
 
 class venue(pytappdObject):
     '''Venue object - requires FourSquare City Lookup'''
-    def __init__(self, name="", json={}):
+    def __init__(self, objid=0, name="", json={}):
         '''Initialize a Venue object'''
         if gPythonv==2:
             super(beer,self).__init__()
         else:
             super().__init__()
         self.apiName="venue"
+        self.namefield="venue_name"
+        self.idfield="venue_id"
         self.headers=[
                 "ID",
                 "Name",
@@ -1141,6 +1196,7 @@ class venue(pytappdObject):
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
+            self.__id=objid
         else:
             mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
@@ -1219,14 +1275,24 @@ def runUntappd(self, argv=None):
 
     if gOptions.loglevel<=1:
         mylog.setLevel(logging.CRITICAL)
+        reqlog.setLevel(logging.CRITICAL)
+        logging.getLogger("urllib3").setLevel(logging.CRITICAL)
     elif gOptions.loglevel<=2:
         mylog.setLevel(logging.ERROR)
+        reqlog.setLevel(logging.ERROR)
+        logging.getLogger("urllib3").setLevel(logging.ERROR)
     elif gOptions.loglevel<=3:
         mylog.setLevel(logging.WARNING)
+        reqlog.setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
     elif gOptions.loglevel<=4:
         mylog.setLevel(logging.INFO)
+        reqlog.setLevel(logging.INFO)
+        logging.getLogger("urllib3").setLevel(logging.INFO)
     elif gOptions.loglevel<=5:
         mylog.setLevel(logging.DEBUG)
+        reqlog.setLevel(logging.DEBUG)
+        logging.getLogger("urllib3").setLevel(logging.DEBUG)
 
 
     #p=pytappd.dotappd("docsmooth")
@@ -1283,12 +1349,17 @@ def runUntappd(self, argv=None):
 
     else:
         p=myfunc(vars(gOptions).get(gOptions.thing, ""))
-        if type(p) == list:
-            print(logsep.join(p[0].headers))
-        else:
-            print(logsep.join(p.headers))
-        for i in p:
-            print("{0}".format(i))
+        try:
+            mylog.debug("Was returned a {0} object".format(type(p)))
+            if type(p) == list:
+                printline(logsep.join(p[0].headers))
+                for i in p:
+                    printline(logsep.join(i))
+            else:
+                printline(logsep.join(p.headers))
+                printline(logsep.join(p))
+        except brokenpipeerror:
+            sys.exit(32)
 
     mylog.info("we are done.")
     if 200<=untappd.result<300:
@@ -1322,8 +1393,9 @@ if __name__ == "__main__":
 Testing notes:
 import pytappd
 p=pytappd.dotappd("docsmooth")
-p.authObject==pytappd.authObject("../auth.ini")
+p.authObject=pytappd.authObject(config="../auth.ini")
 mybeers=p.searchbeer("Rogue Hop")
+mybeer=p.getBeer(1027618)
 for i in mybeers:
     print(i.name)
 
