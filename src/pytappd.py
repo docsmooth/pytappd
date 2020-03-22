@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.10"
+gVers = "0.11"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -495,7 +495,9 @@ class dotappd(object):
             found=myjson["found"]
             for i in myjson["beers"]["items"]:
                 mylog.info("searchbeer: Found {0}".format(i["beer"]["beer_name"]))
-                beerlist.append(beer(json=i["beer"]))
+                x=beer(json=i["beer"])
+                x.brewery=brewery(json=i["brewery"])
+                beerlist.append(x)
             offset=offset+limit
         mylog.info("Returning {0} beers.".format(len(beerlist)))
         return beerlist
@@ -551,12 +553,14 @@ class dotappd(object):
 
     def saveresponses(self):
         mylog.debug("saveResponse: Trying to save self.r status codes.")
+        result=False
         if self.r is not None:
             self.responses["code"]=self.r.status_code
             mylog.debug("saveResponse: Code: {0}".format(self.responses["code"]))
             mylog.debug("saveResponse: JSON: {0}".format(self.r.text))
             if self.r.status_code == 200:
                 mylog.info("saveResponse: No Error, exiting saveResponses.")
+                result=True
             else:
                 try:
                     self.responses["error"]=self.r.json()["meta"]["error_detail"]
@@ -569,10 +573,13 @@ class dotappd(object):
         mylog.debug("saveResponse: Error: {0}".format(self.responses["error"]))
         mylog.debug("saveResponse: Type: {0}".format(self.responses["error_type"]))
         mylog.debug("saveResponse: Friendly: {0}".format(self.responses["friendly"]))
+        return result
 
 class pytappdObject(object):
     def __init__(self, objid=0, name="", json={}):
         '''all pytappd Objects can be initialized empty, or from a dict from r.json()["response"][thing]
+        Some can be built from an id or name, and then "object.update(dotappdobject)" can be called,
+        which will rebuild the existing object from API call.
         '''
         if gPythonv==2:
             super(pytappdObject, self).__init__()
@@ -581,6 +588,7 @@ class pytappdObject(object):
         self.apiName="user"
         self.name = name
         self.id=objid
+        self.icon="📜"
         self.result=False
         self.printheader=True
         self.params={}
@@ -688,11 +696,20 @@ class pytappdObject(object):
             for field in self.fields:
                 #mylog.debug("vals: Trying to find {0} in self.json.".format(field))
                 try:
-                    if type(self.json[field]) != dict:
+                    if getattr(self, field, False):
+                        if type(getattr(self,field)) != list:
+                            if re.search("icon", field):
+                                melist.append(self.icon)
+                            melist.append(str(getattr(self,field)))
+                        else:
+                            melist.append(getattr(self, field)[0].icon)
+                    elif type(self.json[field]) != dict:
                         melist.append(str(self.json[field]))
                         #mylog.debug("vals: Found {0}".format(self.json[field]))
                     else:
                         melist.append("{}")
+                except IndexError:
+                    melist.append("[]")
                 except KeyError:
                     melist.append("Null")
         return melist
@@ -773,6 +790,7 @@ class dummy(pytappdObject):
         self.apiName="dummy"
         self.namefield="dummy_name"
         self.idfield="dummy_id"
+        self.icon="😒"
         self.headers=[
                 "DI",
                 "Name",
@@ -792,12 +810,62 @@ class dummy(pytappdObject):
                 # User activity feed has brewery not underneath the beer itself.
                 self.brewery=brewery(json=self.json["brewery"])
 
+class badge(pytappdObject):
+    """Badges for beers.  Checkins earn badges. This is the class for each one.
+    """
+
+    def __init__(self, objid=0, name="", json={}):
+        '''Initialize a new badge object empty or with data.'''
+        if gPythonv==2:
+            super(beer,self).__init__()
+        else:
+            super().__init__()
+        self.apiName="badges"
+        self.namefield="badge_name"
+        self.idfield="badge_id"
+        self.icon="📛"
+        self.levels=[]
+        self.isactive=False
+        self.level=1
+        self.headers=[
+                "ID",
+                "Name",
+                "Description",
+                "Active?",
+                "Media",
+                "Created At",
+                ]
+        self.fields=[
+                'badge_id',
+                'badge_name',
+                'badge_description',
+                'badge_active_status',
+                'media',
+                'created_at',
+                ]
+        if json=={}:
+            mylog.debug("Init {0} object empty.".format(self.apiName))
+            self.__name=name
+            self.__id=objid
+        else:
+            mylog.debug("Init {0} object from json.".format(self.apiName))
+            self.json=json
+            if self.json.get("levels", False):
+                mylog.info("Badge {0} has multiple levels earned...".format(self.name))
+                for b in json["levels"]["items"]:
+                    mylog.info("Adding level {0}".format(self.level))
+                    self.levels.append(badge(json=b))
+                    self.level+=1
+
 class beer(pytappdObject):
     """Beer!
 
     Each beer in Untappd has a name, an ID, and a brewery it came from.
     It may have a list of checkins nearby, a list of locations nearby, and other
     variable information, but the name and ID we can trust.
+
+    Only 1 function: self.update, which requires an instatiated dotappd
+      object that it can use to authenticate to untappd to update itself
     """
     def __init__(self, objid=0, name="", json={}):
         """As of 0.4 this is initialized from json because someone
@@ -809,6 +877,9 @@ class beer(pytappdObject):
         self.apiName="beer"
         self.namefield="beer_name"
         self.idfield="bid"
+        self.brewery=brewery()
+        self.media=[]
+        self.icon="🍺"
         self.headers=[
                 "ID",
                 "Name",
@@ -855,7 +926,6 @@ class beer(pytappdObject):
                 "friends",
                 "vintages",
                 ]
-        self.brewery=brewery()
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
@@ -871,6 +941,11 @@ class beer(pytappdObject):
                 mylog.info("{0} has a brewery {1}, but no structure.".format(self.name, self.json["brewery_name"]))
                 self.brewery=brewery(name=self.json["brewery_name"])
                 self.brewery.id=self.json["brewery_id"]
+            if self.json.get("media", False):
+                mylog.info("{0} has media.".format(self.name))
+                for m in self.json["media"]["items"]:
+                    mylog.debug("Adding {0} to beer {1}".format(m["photo_id"], self.name))
+                    self.media.append(media(json=m))
 
     def update(self, apiobject):
         mylog.info("Trying to update online for ID: {0}".format(self.id))
@@ -890,7 +965,12 @@ class beer(pytappdObject):
 
 class brewery(pytappdObject):
     '''
-The brewery object (TBD)
+    The brewery object, which either gets built inside a beer object, a 
+    beer object inside a user, or inside a checkin object. Contains lots of
+    beers, hopefully.
+
+    Only 1 function: self.update, which requires an instatiated dotappd
+      object that it can use to authenticate to untappd to update itself
     '''
     def __init__(self, objid=0, name="", json={}):
         if gPythonv==2:
@@ -900,7 +980,8 @@ The brewery object (TBD)
         self.apiName="brewery"
         self.namefield="brewery_name"
         self.idfield="brewery_id"
-        self.beerlist=[]
+        self.beer_list=[]
+        self.icon="🏭"
         self.headers=[
                 "ID",
                 "Name",
@@ -951,7 +1032,7 @@ The brewery object (TBD)
             if json.get("beer_list", False):
                 mylog.info("Brewery {0} returned a beer list, filling it out.".format(self.name))
                 for b in json["beer_list"]["items"]:
-                    self.beerlist.append(beer(json=b["beer"]))
+                    self.beer_list.append(beer(json=b["beer"]))
 
     def update(self, apiobject):
         mylog.info("Trying to update online {0}".format(self.name))
@@ -971,7 +1052,9 @@ The brewery object (TBD)
 
 class checkin(pytappdObject):
     '''Check in a beer!
-    Requires a beer, a user, a timezone, and a gmt offset'''
+    Requires a beer, a user, a timezone, and a gmt offset
+    as of version 0.10, the timezone and GMT offset are hardset.
+    '''
     def __init__(self, objid=0, name="", json={}):
         '''The check-in object'''
         if gPythonv==2:
@@ -981,6 +1064,7 @@ class checkin(pytappdObject):
         self.apiName="checkin"
         self.namefield="checkin_comment"
         self.idfield="checkin_id"
+        self.icon="✔️"
         self.headers=[
                 "Checkin ID"
                 "Result",
@@ -1023,6 +1107,7 @@ class checkin(pytappdObject):
         self.user=user()
         self.brewery=brewery()
         self.venue=venue()
+        self.media=media()
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__id=objid
@@ -1041,8 +1126,6 @@ class checkin(pytappdObject):
             if self.json.get("media", False):
                 # Checkin will have media, unless the user didn't add a picture
                 self.media=media(json=self.json["media"])
-            else:
-                self.media=media()
 
 class media(pytappdObject):
     '''Media object - Should only come back inside checkins or
@@ -1056,6 +1139,12 @@ class media(pytappdObject):
         self.apiName="media"
         self.namefield="media_id"
         self.idfield="media_id"
+        self.beer=beer()
+        self.brewery=brewery()
+        self.venue=venue()
+        self.user=user()
+        self.checkin=0
+        self.icon="📷"
         self.headers=[
                 "ID",
                 "Photo",
@@ -1080,10 +1169,6 @@ class media(pytappdObject):
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.__id=objid
-            self.beer=beer()
-            self.brewery=brewery()
-            self.venue=venue()
-            self.user=user()
         else:
             mylog.debug("Init {0} object from json.".format(self.apiName))
             self.json=json
@@ -1094,11 +1179,18 @@ class media(pytappdObject):
                 mylog.debug("This media has an associated brewery.")
                 self.brewery=brewery(json=self.json["brewery"])
             if self.json.get("venue", False):
-                mylog.debug("This media has an associated venue.")
-                self.venue=venue(json=self.json["venue"])
+                if self.json["venue"] == [[]] or self.json["venue"]==[]:
+                    mylog.info("the venue for this media is empty.")
+                    self.venue=venue()
+                else:
+                    mylog.debug("This media has an associated venue.")
+                    self.venue=venue(json=self.json["venue"][0])
             if self.json.get("user", False):
                 mylog.debug("This media has an associated user.")
                 self.user=user(json=self.json["user"])
+            if self.json.get("checkin_id"):
+                mylog.debug("This media has an associated checkin.")
+                self.checkin=self.json["checkin_id"]
 
 class user(pytappdObject):
     '''The user object (TBD)
@@ -1111,6 +1203,8 @@ class user(pytappdObject):
         self.apiName="user"
         self.namefield="user_name"
         self.idfield="uid"
+        self.recent_brews=[]
+        self.icon="🥴"
         self.headers=[
                 "ID",
                 "Name",
@@ -1145,7 +1239,6 @@ class user(pytappdObject):
                 'stats',
                 'recent_brews',
                 ]
-        self.beerlist=[]
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__name=name
@@ -1159,7 +1252,7 @@ class user(pytappdObject):
                         mylog.debug("Found beer: {0}, which is raw: {1}.".format(item["beer"]["beer_name"], item))
                         x=beer(json=item["beer"])
                         x.brewery=brewery(json=item.get("brewery", {}))
-                        self.beerlist.append(x)
+                        self.recent_brews.append(x)
                         mylog.info("Found beer: {0}".format(x.name))
 
 class venue(pytappdObject):
@@ -1173,6 +1266,7 @@ class venue(pytappdObject):
         self.apiName="venue"
         self.namefield="venue_name"
         self.idfield="venue_id"
+        self.icon="🌃"
         self.headers=[
                 "ID",
                 "Name",
@@ -1207,11 +1301,12 @@ class venue(pytappdObject):
             self.__name=name
             self.__id=objid
         else:
-            mylog.debug("Init {0} object from json.".format(self.apiName))
+            mylog.info("Init {0} object from json.".format(self.apiName))
+            mylog.debug("Got full json: {0}".format(json))
             self.json=json
             if json.get("media", False):
                 for item in json["media"]["items"]:
-                    self.media.append(media(item))
+                    self.media.append(media(json=item))
                     mylog.info("Found media ID: {0}".format(item["photo_id"]))
 
     def update(self, apiobject):
@@ -1369,10 +1464,12 @@ def runUntappd(self, argv=None):
         try:
             mylog.debug("Was returned a {0} object".format(type(p)))
             if type(p) == list:
+                mylog.debug("Got a list, printing headers first...")
                 printline(logsep.join(p[0].headers))
                 for i in p:
                     printline(logsep.join(i))
             else:
+                mylog.debug("got a single item, printing headers then the one line.")
                 printline(logsep.join(p.headers))
                 printline(logsep.join(p))
         except brokenpipeerror:
@@ -1411,12 +1508,16 @@ Testing notes:
 import pytappd
 p=pytappd.dotappd("docsmooth")
 p.authObject=pytappd.authObject(config="../auth.ini")
-mybeers=p.searchbeer("Rogue Hop")
-mybeer=p.getBeer(1027618)
-for i in mybeers:
-    print(i.name)
 
+me=p.getUser("")
+for b in me.recent_brews:
+    print("{0}, {1}".format(b.name, b.brewery.name))
+
+mybeers=p.searchbeer("sierra nevada flipside red")
+for i in mybeers:
+    print("{0}, {1}".format(i.name, i.brewery.name))
     i.update(p)
 
+mybeer=p.getBeer(1027618)
 
 '''

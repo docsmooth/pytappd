@@ -2,6 +2,16 @@
 Untappd Python CLI client
 
 ## History
+### Version 0.11:
+Media Class updated and being called from appropriate places
+
+Venue Class stub working, being called from appropriate places.
+
+beer search returns proper brewery subclass info
+
+Do NOT try to call beer.update or brewery.update on your search results, or you'll use up your API limit for the hour.
+
+Added emoji icons to replace lists, dicts, and URLs in the printing.
 ### Version 0.10:
 Fill out lots of missing data in the object model for beer, brewery, and user
 
