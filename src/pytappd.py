@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.11"
+gVers = "0.12"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -1108,6 +1108,7 @@ class checkin(pytappdObject):
         self.brewery=brewery()
         self.venue=venue()
         self.media=media()
+        self.badges=[]
         if json=={}:
             mylog.debug("Init {0} object empty.".format(self.apiName))
             self.__id=objid
@@ -1119,13 +1120,22 @@ class checkin(pytappdObject):
             self.json=json
             if self.json.get("brewery", False):
                 # Checkin SHOULD have the brewery directly underneath the checkin
+                mylog.debug("Found brewery in checkin.")
                 self.brewery=brewery(json=self.json["brewery"])
             if self.json.get("beer", False):
                 # Checkin SHOULD have the beer directly underneath the checkin
+                mylog.debug("Found brewery in checkin.")
                 self.beer=beer(json=self.json["beer"])
             if self.json.get("media", False):
                 # Checkin will have media, unless the user didn't add a picture
+                mylog.info("Found brewery in checkin.")
                 self.media=media(json=self.json["media"])
+            if self.json.get("badges", False):
+                mylog.info("Found badges in checkin.")
+                for b in self.json["badges"]["items"]:
+                    x=badge(json=b)
+                    mylog.debug("Found badge {0}".format(x.name))
+                    self.badges.append(x)
 
 class media(pytappdObject):
     '''Media object - Should only come back inside checkins or

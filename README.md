@@ -2,6 +2,8 @@
 Untappd Python CLI client
 
 ## History
+### Version 0.12:
+Data model complete, see examples.md
 ### Version 0.11:
 Media Class updated and being called from appropriate places
 
