@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.12"
+gVers = "0.13"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -580,6 +580,19 @@ class pytappdObject(object):
         '''all pytappd Objects can be initialized empty, or from a dict from r.json()["response"][thing]
         Some can be built from an id or name, and then "object.update(dotappdobject)" can be called,
         which will rebuild the existing object from API call.
+
+          objid=int(object_id)
+          name=str(object_name)
+          json=dict(json of object)
+
+          updating an object is is sometimes needed even if the object
+          was created from json because not all Untappd API methods return a fully
+          populated object. FOr example, a dotappd.searchbeer(str(beername)) call returns
+          a list of beer objects. But those beer objects do not include fully populated brewery objects.
+
+          This program will not automatically fully populate those brewery objects, because a single search
+          Could utilize all 100 API calls your user can make in an hour if we did that full population.
+        """
         '''
         if gPythonv==2:
             super(pytappdObject, self).__init__()
@@ -815,7 +828,12 @@ class badge(pytappdObject):
     """
 
     def __init__(self, objid=0, name="", json={}):
-        '''Initialize a new badge object empty or with data.'''
+        '''Initialize a new badge object empty or with data.
+        Data can be empty or should be at least one of:
+          objid=int(badge_id)
+          name=str(badge_name)
+          json=dict(json of badge object)
+        '''
         if gPythonv==2:
             super(beer,self).__init__()
         else:
@@ -868,8 +886,18 @@ class beer(pytappdObject):
       object that it can use to authenticate to untappd to update itself
     """
     def __init__(self, objid=0, name="", json={}):
-        """As of 0.4 this is initialized from json because someone
-        looked up a beer."""
+        """
+        Data to initialize can be empty should be at least one of:
+          objid=int(bid)
+          name=str(beer_name)
+          json=dict(json of beer object)
+
+          if at least objid or name is provided, "self.update(dotappdobject)"
+          will fully populate the object.  THis is sometimes needed even if the object
+          was created from json because not all Untappd API methods return a fully
+          populated beer object (with media and brewery info).
+
+          """
         if gPythonv==2:
             super(beer, self).__init__()
         else:
@@ -973,6 +1001,17 @@ class brewery(pytappdObject):
       object that it can use to authenticate to untappd to update itself
     '''
     def __init__(self, objid=0, name="", json={}):
+        """Data to initialize can be empty, or at least one of:
+          objid=int(brewery_id)
+          name=str(brewery_name)
+          json=dict(json of brewery object)
+
+          if at least objid or name is provided, "self.update(dotappdobject)"
+          will fully populate the object.  THis is sometimes needed even if the object
+          was created from json because not all Untappd API methods return a fully
+          populated brewery object (with media and beer list).
+
+        """
         if gPythonv==2:
             super(brewery, self).__init__()
         else:
@@ -1056,7 +1095,9 @@ class checkin(pytappdObject):
     as of version 0.10, the timezone and GMT offset are hardset.
     '''
     def __init__(self, objid=0, name="", json={}):
-        '''The check-in object'''
+        '''The check-in object is returned by dotappd.checkin() function
+        It is not normally initialized empty.
+        '''
         if gPythonv==2:
             super(pytappdObject,self).__init__()
         else:
@@ -1141,7 +1182,13 @@ class media(pytappdObject):
     '''Media object - Should only come back inside checkins or
     venues.'''
     def __init__(self, objid=0, name="", json={}):
-        '''Initialize a Media object'''
+        '''Initialize a Media object
+        Data to initialize can be empty, or at least one of:
+          objid=int(media_id)
+          name=str(media_name)
+          json=dict(json of media object)
+
+        '''
         if gPythonv==2:
             super(media,self).__init__()
         else:
@@ -1206,6 +1253,16 @@ class user(pytappdObject):
     '''The user object (TBD)
     '''
     def __init__(self, objid=0, name="", json={}):
+        """Data to initialize can be empty, or at least one of:
+          objid=int(uid)
+          name=str(username)
+          json=dict(json of user object)
+
+          if at least objid or name is provided, "self.update(dotappdobject)"
+          will fully populate the object.  THis is sometimes needed even if the object
+          was created from json because not all Untappd API methods return a fully
+          populated user object.
+        """
         if gPythonv==2:
             super(user, self).__init__()
         else:
@@ -1268,7 +1325,16 @@ class user(pytappdObject):
 class venue(pytappdObject):
     '''Venue object - requires FourSquare City Lookup'''
     def __init__(self, objid=0, name="", json={}):
-        '''Initialize a Venue object'''
+        """Data to initialize can be empty, or at least one of:
+          objid=int(venue_id)
+          name=str(venue_name)
+          json=dict(json of venue object)
+
+          if at least objid or name is provided, "self.update(dotappdobject)"
+          will fully populate the object.  THis is sometimes needed even if the object
+          was created from json because not all Untappd API methods return a fully
+          populated venue object (with beer list and media).
+        """
         if gPythonv==2:
             super(beer,self).__init__()
         else:
@@ -1417,22 +1483,20 @@ def runUntappd(self, argv=None):
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
 
 
-    #p=pytappd.dotappd("docsmooth")
-    #p.authObject==pytappd.authObject("../auth.ini")
-    #mybeers=p.searchbeer("Rogue Hop")
     untappd=dotappd("")
     untappd.authObject=authObject(gOptions.config)
     mything=None
     myfunc=None
-    if gOptions.thing in [ "help", "h", "?" ]:
-        print("Valid API classes / things:")
-        print("    Type this:".ljust(24, " ") + "= To get this Class")
-        print("".ljust(43, "-"))
-        for mything in sorted(untappd.paths, key=operator.itemgetter(1)):
-        #for mything in gClasses.items():
-            #print("    " + mything[0].ljust(20, " ") + "= " + gClasses[mything[0]])
-            print("    {0}= x".format(mything.ljust(20, " ") ))
-        sys.exit(1)
+    myactions=dict()
+    for thing in untappd.paths.keys():
+        for func in untappd.paths[thing].keys():
+            mylog.debug("Inspecting {0}, {1} as possible action pairs.".format(thing, func))
+            myactions.setdefault(func, list()).append(thing)
+
+    if len(myactions[gOptions.action]) <2:
+        mything=myactions[gOptions.action][0]
+        mylog.debug("Only one thing, {0} can do the action {1} requested.".format(mything, gOptions.action))
+        myfunc=untappd.paths[mything][gOptions.action]["func"]
     elif gOptions.thing in untappd.paths:
         mything=untappd.paths[gOptions.thing]
         myfunc=untappd.paths[gOptions.thing][gOptions.action]["func"]

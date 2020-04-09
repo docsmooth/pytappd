@@ -2,8 +2,13 @@
 Untappd Python CLI client
 
 ## History
+### Version 0.13:
+Start rewriting CLI and action lookup for upcoming interactive CLI.
+Requires updating how the checkin command will be called, which will result in a v1.0 due to API changes
+
 ### Version 0.12:
 Data model complete, see examples.md
+
 ### Version 0.11:
 Media Class updated and being called from appropriate places
 
