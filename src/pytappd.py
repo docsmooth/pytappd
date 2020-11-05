@@ -302,6 +302,12 @@ class dotappd(object):
                         "send": str(),
                         "func": self.getUserBeers,
                         },
+                    "checkins": {
+                        "method" : "GET",
+                        "path": "user/checkins/",
+                        "send" : str(),
+                        "func": self.getCheckins,
+                        },
                     },
                 "checkin": {
                     "recent": {
@@ -618,9 +624,18 @@ class dotappd(object):
         return beerlist
 
     def getCheckins(self, val, **kwargs):
-        mylog.debug("getCheckins: Trying to get recent checkins...")
-        path="{0}".format(self.paths["checkin"]["recent"]["path"])
-        myjson=self.__callApi(method=path, verb=self.paths["checkin"]["recent"]["method"], **kwargs)
+        path=""
+        verb=""
+        if val:
+            # we were asked for a user's checkins
+            path="{0}/{1}".format(self.paths["user"]["checkins"]["path"], val)
+            verb=self.paths["user"]["checkins"]["method"]
+            mylog.debug("getCheckins: Looking for checkinsfor user {0}".format(val))
+        else:
+            path=self.paths["checkin"]["recent"]["path"]
+            verb=self.paths["checkin"]["recent"]["method"]
+            mylog.debug("getCheckins: Looking for checkins for self.")
+        myjson=self.__callApi(method=path, verb=verb, **kwargs)
         mylog.debug("getCheckins: making call for checkins now...")
         checkinlist=[]
         for i in myjson["response"]["checkins"]["items"]:
@@ -1184,41 +1199,41 @@ class checkin(pytappdObject):
         self.icon="✔️"
         self.headers=[
                 "Checkin ID"
-                "Result",
-                "Badge_Valid",
                 "Created At",
-                "Comment",
                 "Stats",
                 "Rating",
                 "User",
                 "Beer",
                 "Brewery",
                 "Venue",
+                "Comment",
                 "Recommentations",
                 "Media_allowed",
                 "Source",
                 "Follow Status",
                 "Promotions",
                 "Badges",
+                "Result",
+                "Badge_Valid",
                 ]
         self.fields=[
                 'checkin_id',
-                'result',
-                'badge_valid',
                 'created_at',
-                'checkin_comment',
                 'stats',
                 'rating_score',
                 'user',
                 'beer',
                 'brewery',
                 'venue',
+                'checkin_comment',
                 'recommendations',
                 'media_allowed',
                 'source',
                 'follow_status',
                 'promotions',
                 'badges',
+                'result',
+                'badge_valid',
                 ]
         self.beer=beer()
         self.user=user()
