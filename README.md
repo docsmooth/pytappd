@@ -2,6 +2,9 @@
 Untappd Python CLI client
 
 ## History
+### Version 0.14:
+Add lookup of beers by user with sort and limit options.
+Move parameters into \__callApi so that they pick up from any function
 ### Version 0.13:
 Start rewriting CLI and action lookup for upcoming interactive CLI.
 Requires updating how the checkin command will be called, which will result in a v1.0 due to API changes

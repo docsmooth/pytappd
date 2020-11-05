@@ -6,7 +6,7 @@ So you can drink beer and program and never touch your mouse.
 
 Or phone.
 """
-gVers = "0.13"
+gVers = "0.14"
 
 import os, sys, re, warnings, operator, datetime, socket, io, copy, argparse, logging
 from urllib.parse import urlparse
@@ -232,7 +232,7 @@ class dotappd(object):
         self.r = None
         self.result = False
         self.baseurl = gBaseUrl
-        self.data = None
+        self.data = {}
         self.params={}
         self.authObject = None
         self.responses={
@@ -295,6 +295,12 @@ class dotappd(object):
                         "path": "user/info/",
                         "send": str(),
                         "func": self.getUser,
+                        },
+                    "beers": {
+                        "method": "GET",
+                        "path": "user/beers/",
+                        "send": str(),
+                        "func": self.getUserBeers,
                         },
                     },
                 }
@@ -367,6 +373,38 @@ class dotappd(object):
         mylog.debug("callapi: Entering with verb {0}".format(verb))
         url="{0}/{1}/".format(self.baseurl, method)
         params.update(self.params)
+        if kwargs.get("limit", False):
+            params["limit"]=kwargs["limit"]
+        elif gOptions!=None and gOptions.limit:
+            params["limit"]=gOptions.limit
+        if kwargs.get("offset", False):
+            params["offset"]=kwargs["offset"]
+        elif gOptions!=None and gOptions.offset:
+            params["offset"]=gOptions.offset
+        if kwargs.get("sort", False):
+            params["sort"]=kwargs["sort"]
+        elif gOptions!=None and gOptions.sort:
+            params["sort"]=gOptions.sort
+        if kwargs.get("tz", False):
+            self.data["timezone"]=tz
+        else:
+            self.data["timezone"]="CDT"
+        if kwargs.get("shout", False):
+            self.data["shout"]=kwargs["shout"]
+        elif gOptions!=None and gOptions.shout:
+            self.data["shout"]=gOptions.shout
+        if kwargs.get("rating", False):
+            self.data["rating"]=kwargs["rating"]
+        elif gOptions!=None and gOptions.rating:
+            self.data["rating"]=gOptions.rating
+        if kwargs.get("twitter", False):
+            self.data["twitter"]="on"
+        elif gOptions!=None and gOptions.twitter:
+            self.data["twitter"]="on"
+        if kwargs.get("facebook", False):
+            self.data["facebook"]="on"
+        elif gOptions!=None and gOptions.facebook:
+            self.data["facebook"]="on"
         if verb=="GET":
             mylog.debug("callapi: GET {0} with params {1}".format(url, params))
             self.r=self.s.get(url, params=params)
@@ -443,26 +481,27 @@ class dotappd(object):
                 'rating':0,
                 'bid':mybeer.id,
                 }
-        if kwargs.get("tz", False):
-            self.data["timezone"]=tz
-        else:
-            self.data["timezone"]="CDT"
-        if kwargs.get("shout", False):
-            self.data["shout"]=kwargs["shout"]
-        elif gOptions!=None and gOptions.shout:
-            self.data["shout"]=gOptions.shout
-        if kwargs.get("rating", False):
-            self.data["rating"]=kwargs["rating"]
-        elif gOptions!=None and gOptions.rating:
-            self.data["rating"]=gOptions.rating
-        if kwargs.get("twitter", False):
-            self.data["twitter"]="on"
-        elif gOptions!=None and gOptions.twitter:
-            self.data["twitter"]="on"
-        if kwargs.get("facebook", False):
-            self.data["facebook"]="on"
-        elif gOptions!=None and gOptions.facebook:
-            self.data["facebook"]="on"
+        if kwargs.get("location", False) or (gOptions!=None and gOptions.location):
+            #can only push to foursquare iwth a location
+            checkin_venue=venue()
+            if kwargs.get("foursquare", False):
+                self.data["foursquare"]="on"
+                try:
+                    checkin_venue=venue(objid=int(kwargs["foursquare"]))
+                    checkin_venue.update(self)
+                    self.data["foursquare_id"]=checkin_venue.foursquareid
+                except ValueError:
+                    self.data["foursquare_id"]=kwargs["foursquare"]
+                    mylog.info("Trying to check in with non-int location ID, assuming FourSquare MD5 hash: {0}".format(self.data["foursquare_id"]))
+            elif gOptions!=None and gOptions.foursquare:
+                self.data["foursquare"]="on"
+                try:
+                    checkin_venue=venue(objid=int(gOptions.location))
+                    checkin_venue.update(self)
+                    self.data["foursquare_id"]=checkin_venue.foursquareid
+                except ValueError:
+                    self.data["foursquare_id"]=gOptions.location
+                    mylog.info("Trying to check in with non-int location ID, assuming FourSquare MD5 hash: {0}".format(self.data["foursquare_id"]))
         myjson=self.__callApi(verb=verb, method=path, params=self.params)["response"]
         return checkin(json=myjson)
 
@@ -535,12 +574,12 @@ class dotappd(object):
         mylog.info("Returning {0} breweries.".format(len(brewlist)))
         return brewlist
 
-    def getUser(self, val):
+    def getUser(self, val, **kwargs):
         mylog.debug("getuser: trying to get user: {0}".format(val))
         myjson=self.getUserJson(val)
         return user(json=myjson)
 
-    def getUserJson(self, val=""):
+    def getUserJson(self, val="", **kwargs):
         mylog.debug("getuser: trying to get user: {0}".format(val))
         try:
             val=str(val)
@@ -548,8 +587,27 @@ class dotappd(object):
             mylog.error("Can't look up a user by non-{1} values! Was passed: {2}".format(self.paths["user"]["info"]["send"], val))
             return None
         path="{0}/{1}".format(self.paths["user"]["info"]["path"], val)
-        myjson=self.__callApi(method=path, verb=self.paths["user"]["info"]["method"])
+        myjson=self.__callApi(method=path, verb=self.paths["user"]["info"]["method"], **kwargs)
         return myjson["response"]["user"]
+
+    def getUserBeers(self, val, **kwargs):
+        mylog.debug("getuserBeers: trying to get list of beers for user: {0}".format(val))
+        try:
+            if val==None:
+                val=""
+            else:
+                val=str(val)
+        except ValueError:
+            #this call works with an empty "val", in which case it assumes self.
+            val=""
+        path="{0}/{1}".format(self.paths["user"]["beers"]["path"], val)
+        myjson=self.__callApi(method=path, verb=self.paths["user"]["beers"]["method"], **kwargs)
+        mylog.debug("getUserBeerList: Trying to get beer list for user {0}".format(val))
+        beerlist=[]
+        for i in myjson["response"]["beers"]["items"]:
+            beerlist.append(beer(json=i["beer"]))
+            #not adding complexity, since this api returns only 25 beers
+        return beerlist
 
     def saveresponses(self):
         mylog.debug("saveResponse: Trying to save self.r status codes.")
@@ -1169,7 +1227,7 @@ class checkin(pytappdObject):
                 self.beer=beer(json=self.json["beer"])
             if self.json.get("media", False):
                 # Checkin will have media, unless the user didn't add a picture
-                mylog.info("Found brewery in checkin.")
+                mylog.info("Found media in checkin.")
                 self.media=media(json=self.json["media"])
             if self.json.get("badges", False):
                 mylog.info("Found badges in checkin.")
@@ -1342,6 +1400,7 @@ class venue(pytappdObject):
         self.apiName="venue"
         self.namefield="venue_name"
         self.idfield="venue_id"
+        self.foursquareid=""
         self.icon="🌃"
         self.headers=[
                 "ID",
@@ -1384,6 +1443,9 @@ class venue(pytappdObject):
                 for item in json["media"]["items"]:
                     self.media.append(media(json=item))
                     mylog.info("Found media ID: {0}".format(item["photo_id"]))
+            if json.get("foursquare", False):
+                self.foursquareid=json["foursquare"]["foursquare_id"]
+                mylog.info("Found 4square ID {0}, saving.".format(self.foursquareid))
 
     def update(self, apiobject):
         mylog.info("Trying to update online for ID: {0}".format(self.id))
@@ -1455,9 +1517,25 @@ def runUntappd(self, argv=None):
             action='store_true',
             help="Send the checkin to Twitter",
             )
+    parser.add_argument('-4', '--foursquare',
+            action='store_true',
+            help="Send the checkin to FourSquare/Swarm",
+            )
     parser.add_argument('-z', '--facebook',
             action='store_true',
             help="Send the checkin to Facebook",
+            )
+    parser.add_argument('--sort',
+            type=str,
+            help="sorting order",
+            )
+    parser.add_argument('--offset',
+            type=int,
+            help="Offset for search functions",
+            )
+    parser.add_argument('--limit',
+            type=int,
+            help="Limit of results to return, if supported.",
             )
     gOptions=parser.parse_args(argv)
 
