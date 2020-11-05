@@ -303,6 +303,14 @@ class dotappd(object):
                         "func": self.getUserBeers,
                         },
                     },
+                "checkin": {
+                    "recent": {
+                        "method" : "GET",
+                        "path": "checkin/recent/",
+                        "send" : str(),
+                        "func": self.getCheckins,
+                        },
+                    },
                 }
 
     @property
@@ -608,6 +616,16 @@ class dotappd(object):
             beerlist.append(beer(json=i["beer"]))
             #not adding complexity, since this api returns only 25 beers
         return beerlist
+
+    def getCheckins(self, val, **kwargs):
+        mylog.debug("getCheckins: Trying to get recent checkins...")
+        path="{0}".format(self.paths["checkin"]["recent"]["path"])
+        myjson=self.__callApi(method=path, verb=self.paths["checkin"]["recent"]["method"], **kwargs)
+        mylog.debug("getCheckins: making call for checkins now...")
+        checkinlist=[]
+        for i in myjson["response"]["checkins"]["items"]:
+            checkinlist.append(checkin(json=i))
+        return checkinlist
 
     def saveresponses(self):
         mylog.debug("saveResponse: Trying to save self.r status codes.")
@@ -1190,7 +1208,7 @@ class checkin(pytappdObject):
                 'created_at',
                 'checkin_comment',
                 'stats',
-                'rating',
+                'rating_score',
                 'user',
                 'beer',
                 'brewery',
@@ -1235,6 +1253,12 @@ class checkin(pytappdObject):
                     x=badge(json=b)
                     mylog.debug("Found badge {0}".format(x.name))
                     self.badges.append(x)
+            if self.json.get("user", False):
+                mylog.info("Found user in checkin.")
+                self.user=user(json=self.json["user"])
+            if self.json.get("username", False):
+                mylog.info("Found username in checkin.")
+                self.user=user(json=self.json["username"])
 
 class media(pytappdObject):
     '''Media object - Should only come back inside checkins or
