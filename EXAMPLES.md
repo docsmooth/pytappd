@@ -47,10 +47,6 @@ Flipside Red IPA, Sierra Nevada Brewing Co.
 Torpedo Extra IPA, Sierra Nevada Brewing Co.
 >>> me.recent_brews[0].id
 4997
->>> torp=p.getBeer(objid=4997)
-Traceback (most recent call last):
-  File "<stdin>", line 1, in <module>
-TypeError: getBeer() got an unexpected keyword argument 'objid'
 >>> torp=p.getBeer(4997)
 >>> torp.name
 'Torpedo Extra IPA'
