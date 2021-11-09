@@ -184,16 +184,16 @@ class authObject(object):
         return True
 
     def save(self, **kwargs):
-        mylog.info("authObject: Saving configuration as new file.")
+        mylog.info("authObject.save: Saving configuration as new file.")
         configfile=self.name
         if kwargs.get("config", False):
-            mylog.info("authObject: Overriding file to: {0}".format(kwargs["config"]))
+            mylog.info("authObject.save: Overriding file to: {0}".format(kwargs["config"]))
             configfile=kwargs["config"]
         if self.token:
-            mylog.info("authObject: storing access token: {0}".format(self.token))
+            mylog.info("authObject.save: storing access token: {0}".format(self.token))
             self.authconfig["Authorization"]["Access_Token"]=self.token
         if self.id:
-            mylog.info("authObject: storing Client ID: {0}".format(self.id))
+            mylog.info("authObject.save: storing Client ID: {0}".format(self.id))
             self.authconfig["Authorization"]["ClientID"]=self.id
         with open(configfile, 'w') as filename:
             result=self.authconfig.write(filename)
@@ -201,7 +201,7 @@ class authObject(object):
 
 
     def default(self, configfile):
-        mylog.info("authObject: Writing new auth object!")
+        mylog.info("authObject.save: Writing new auth object!")
         self.authconfig["Authorization"]["ClientID"]="dummy"
         result=self.save(configfile)
         return result
@@ -337,7 +337,7 @@ class dotappd(object):
                 self.__json=copy.deepcopy(self.r.json())
                 # not going to validate if the HTTP we got back is valid data structure, cause I trust Greg
             except AttributeError:
-                mylog.error("JSON not initialized from HTTP and none passed in, what happened?")
+                mylog.error("json.setter: JSON not initialized from HTTP and none passed in, what happened?")
                 raise AttributeError
         else:
             self.__json=copy.deepcopy(json)
@@ -451,7 +451,7 @@ class dotappd(object):
         '''abstraction for CallApi()
         Call as dotappd.cmd(thing="beer", what="search", val="Dogfish 60 Minute")
         '''
-        mylog.debug("cmd: trying to do search on {0} with value: {1}".format(thing,val))
+        mylog.debug("search: trying to do search on {0} with value: {1}".format(thing,val))
         verb=self.paths[thing]["search"]["method"]
         path=self.paths[thing]["search"]["path"]
         params={}
@@ -487,7 +487,7 @@ class dotappd(object):
         utc_offset=date.utcoffset() / datetime.timedelta(seconds=1)
         utc_offset=utc_offset / 3600
         utc_offset=str(utc_offset)
-        mylog.debug("Have UTC offset of {0} for date {1}".format(utc_offset, date))
+        mylog.debug("checkin: Have UTC offset of {0} for date {1}".format(utc_offset, date))
         self.data={
                 'timezone':"CDT",
                 'shout':"",
@@ -497,16 +497,19 @@ class dotappd(object):
                 }
         if kwargs.get("location", False) or (gOptions!=None and gOptions.location):
             #can only push to foursquare iwth a location
-            checkin_venue=venue()
+            mylog.debug("checkin: Have been asked to add a venue: {0}".format(kwargs.get("location", gOptions.location)))
+            location=kwargs.get("location", gOptions.location)
+            checkin_venue=venue(objid=location)
             if kwargs.get("foursquare", False):
                 self.data["foursquare"]="on"
                 try:
-                    checkin_venue=venue(objid=int(kwargs["foursquare"]))
+                    checkin_venue=venue(objid=int(location))
                     checkin_venue.update(self)
                     self.data["foursquare_id"]=checkin_venue.foursquareid
+                    mylog.info("checkin: Adding venue {0} with 4SQ id {1}".format(location, checkin_venu.foursquareid))
                 except ValueError:
-                    self.data["foursquare_id"]=kwargs["foursquare"]
-                    mylog.info("Trying to check in with non-int location ID, assuming FourSquare MD5 hash: {0}".format(self.data["foursquare_id"]))
+                    self.data["foursquare_id"]=location
+                    mylog.info("checkin: Trying to check in with non-int location ID, assuming FourSquare MD5 hash: {0}".format(self.data["foursquare_id"]))
             elif gOptions!=None and gOptions.foursquare:
                 self.data["foursquare"]="on"
                 try:
@@ -515,9 +518,11 @@ class dotappd(object):
                     self.data["foursquare_id"]=checkin_venue.foursquareid
                 except ValueError:
                     self.data["foursquare_id"]=gOptions.location
-                    mylog.info("Trying to check in with non-int location ID, assuming FourSquare MD5 hash: {0}".format(self.data["foursquare_id"]))
-        myjson=self.__callApi(verb=verb, method=path, params=self.params)["response"]
-        return checkin(json=myjson)
+                    mylog.info("checkin: Trying to check in with non-int location ID, assuming FourSquare MD5 hash: {0}".format(self.data["foursquare_id"]))
+        mylog.warning("checkin: Actual checkin is disabled!!!")
+        #myjson=self.__callApi(verb=verb, method=path, params=self.params)["response"]
+        #return checkin(json=myjson)
+        return True
 
 
     def getBeer(self, val):
@@ -530,7 +535,7 @@ class dotappd(object):
         try:
             val=int(val)
         except ValueError:
-            mylog.error("Can't look up a beer by non-int values! Was passed: {0}".format(val))
+            mylog.error("getbeer: Can't look up a beer by non-int values! Was passed: {0}".format(val))
             return None
         path="{0}/{1}".format(self.paths["beer"]["info"]["path"], val)
         myjson=self.__callApi(method=path, verb=self.paths["beer"]["info"]["method"])
@@ -552,11 +557,11 @@ class dotappd(object):
                 x.brewery=brewery(json=i["brewery"])
                 beerlist.append(x)
             offset=offset+limit
-        mylog.info("Returning {0} beers.".format(len(beerlist)))
+        mylog.info("searchbeer.Returning {0} beers.".format(len(beerlist)))
         return beerlist
 
     def getBrewery(self, val):
-        mylog.debug("getbrew: trying to get brewery: {0}".format(val))
+        mylog.debug("getbrewery: trying to get brewery: {0}".format(val))
         myjson=self.getBreweryJson(val)
         return brewery(json=myjson)
 
@@ -565,7 +570,7 @@ class dotappd(object):
         try:
             val=int(val)
         except ValueError:
-            mylog.error("Can't look up a brewery by non-int values! Was passed: {0}".format(val))
+            mylog.error("ERROR: getbrewery: Can't look up a brewery by non-int values! Was passed: {0}".format(val))
             return None
         path="{0}/{1}".format(self.paths["brewery"]["info"]["path"], val)
         myjson=self.__callApi(method=path, verb=self.paths["brewery"]["info"]["method"])
@@ -578,14 +583,14 @@ class dotappd(object):
         found=100
         limit=50
         while offset+limit<found:
-            mylog.debug("searchbrew: Asked for up to {0} brewerys, got {1}, starting at: {2}.".format(limit, found, offset))
+            mylog.debug("searchbrewery: Asked for up to {0} brewerys, got {1}, starting at: {2}.".format(limit, found, offset))
             myjson=self.__search("brewery", val, offset, limit)
             found=myjson["found"]
             for i in myjson["brewery"]["items"]:
-                mylog.info("searchbrew: Found {0}".format(i["brewery"]["brewery_name"]))
+                mylog.info("searchbrewery: Found {0}".format(i["brewery"]["brewery_name"]))
                 brewlist.append(brewery(json=i["brewery"]))
             offset=offset+limit
-        mylog.info("Returning {0} breweries.".format(len(brewlist)))
+        mylog.info("searchbrewery: Returning {0} breweries.".format(len(brewlist)))
         return brewlist
 
     def getUser(self, val, **kwargs):
@@ -598,7 +603,7 @@ class dotappd(object):
         try:
             val=str(val)
         except ValueError:
-            mylog.error("Can't look up a user by non-{1} values! Was passed: {2}".format(self.paths["user"]["info"]["send"], val))
+            mylog.error("getuser: Can't look up a user by non-{1} values! Was passed: {2}".format(self.paths["user"]["info"]["send"], val))
             return None
         path="{0}/{1}".format(self.paths["user"]["info"]["path"], val)
         myjson=self.__callApi(method=path, verb=self.paths["user"]["info"]["method"], **kwargs)
@@ -616,7 +621,7 @@ class dotappd(object):
             val=""
         path="{0}/{1}".format(self.paths["user"]["beers"]["path"], val)
         myjson=self.__callApi(method=path, verb=self.paths["user"]["beers"]["method"], **kwargs)
-        mylog.debug("getUserBeerList: Trying to get beer list for user {0}".format(val))
+        mylog.debug("getUserBeers: Trying to get beer list for user {0}".format(val))
         beerlist=[]
         for i in myjson["response"]["beers"]["items"]:
             beerlist.append(beer(json=i["beer"]))
@@ -723,31 +728,31 @@ class pytappdObject(object):
     @json.setter
     def json(self, json=None):
         if json==None:
-            mylog.info("{0}: JSON not initialized from HTTP and none passed in, unsetting self.".format(self.name))
+            mylog.info("json.setter: {0}: JSON not initialized from HTTP and none passed in, unsetting self.".format(self.name))
             self.id=0
             self.name=""
             self.__json=None
         else:
             #validate, then set
             if json.get("response", False):
-                mylog.info("we got back the FULL json from an API call, so we have to de-nest the {0} object.".format(self.apiName))
+                mylog.info("json.setter: we got back the FULL json from an API call, so we have to de-nest the {0} object.".format(self.apiName))
                 searchdict=json["response"][self.apiName]
             else:
                 searchdict=json
             #mylog.debug("Now looking through object {0}".format(searchdict))
             for field in self.fields:
-                mylog.debug("Looking up field {0} in json object.".format(field))
+                mylog.debug("json.setter: Looking up field {0} in json object.".format(field))
                 if searchdict.get(field, None) is None:
                     # got a stub from somewhere else, so set as blank
-                    mylog.debug("{0}: JSON not complete for this object type, missing field {1}".format(self.name, field))
+                    mylog.debug("json.setter: {0}: JSON not complete for this object type, missing field {1}".format(self.name, field))
                     searchdict[field]=None
                 if field==self.idfield:
                     # some things return an id and a _type_id, so don't overwrite if we already have an id
                     self.id=searchdict[field]
-                    mylog.info("found an ID field {0}, setting as ID: {1}".format(field, searchdict[field]))
+                    mylog.info("json.setter: found an ID field {0}, setting as ID: {1}".format(field, searchdict[field]))
                 elif field==self.namefield:
                     self.name=searchdict[field]
-                    mylog.info("found a name field {0}, setting as: {1}".format(field, searchdict[field]))
+                    mylog.info("json.setter: found a name field {0}, setting as: {1}".format(field, searchdict[field]))
                 else:
                     # the name and ID fields have different names for each subclass,
                     # the point of this if/elif is to find those 2 fields in each json returned.
@@ -772,7 +777,7 @@ class pytappdObject(object):
 
     @id.setter
     def id(self, x=0):
-        mylog.debug("Setting id for {0} to {1}".format(self.apiName, x))
+        mylog.debug("id.setter: Setting id for {0} to {1}".format(self.apiName, x))
         if x==0:
             self.unsetJson()
             self.__id=0
@@ -785,7 +790,7 @@ class pytappdObject(object):
 
     @name.setter
     def name(self,x=""):
-        mylog.debug("Setting name for {0} to {1}".format(self.apiName, x))
+        mylog.debug("name.setter: Setting name for {0} to {1}".format(self.apiName, x))
         try:
             if x=="":
                 self.unsetJson()
@@ -904,11 +909,11 @@ class dummy(pytappdObject):
                 'dummy_name',
                 ]
         if json=={}:
-            mylog.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("dummy: Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.__id=objid
         else:
-            mylog.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("dummy: Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("brewery", False):
                 # User activity feed has brewery not underneath the beer itself.
@@ -953,16 +958,16 @@ class badge(pytappdObject):
                 'created_at',
                 ]
         if json=={}:
-            mylog.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("badge: Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.__id=objid
         else:
-            mylog.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("badge: Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("levels", False):
-                mylog.info("Badge {0} has multiple levels earned...".format(self.name))
+                mylog.info("badge: Badge {0} has multiple levels earned...".format(self.name))
                 for b in json["levels"]["items"]:
-                    mylog.info("Adding level {0}".format(self.level))
+                    mylog.info("badge: Adding level {0}".format(self.level))
                     self.levels.append(badge(json=b))
                     self.level+=1
 
@@ -1046,30 +1051,30 @@ class beer(pytappdObject):
                 "vintages",
                 ]
         if json=={}:
-            mylog.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("beer: Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.__id=objid
         else:
-            mylog.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("beer: Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("brewery", False):
-                mylog.info("{0} has a brewery json.".format(self.name))
+                mylog.info("beer: {0} has a brewery json.".format(self.name))
                 # User activity feed has brewery not underneath the beer itself.
                 self.brewery=brewery(json=self.json["brewery"])
             elif self.json.get("brewery_name"):
-                mylog.info("{0} has a brewery {1}, but no structure.".format(self.name, self.json["brewery_name"]))
+                mylog.info("beer: {0} has a brewery {1}, but no structure.".format(self.name, self.json["brewery_name"]))
                 self.brewery=brewery(name=self.json["brewery_name"])
                 self.brewery.id=self.json["brewery_id"]
             if self.json.get("media", False):
-                mylog.info("{0} has media.".format(self.name))
+                mylog.info("beer: {0} has media.".format(self.name))
                 for m in self.json["media"]["items"]:
-                    mylog.debug("Adding {0} to beer {1}".format(m["photo_id"], self.name))
+                    mylog.debug("beer: Adding {0} to beer {1}".format(m["photo_id"], self.name))
                     self.media.append(media(json=m))
 
     def update(self, apiobject):
-        mylog.info("Trying to update online for ID: {0}".format(self.id))
+        mylog.info("beerupdate: Trying to update online for ID: {0}".format(self.id))
         if self.id==0 and self.name=="":
-            mylog.warning("Can't look up id 0 online, returning fail!")
+            mylog.warning("beerupdate: Can't look up id 0 online, returning fail!")
             return False
         if self.id!=0:
             self=apiobject.getBeer(self.id)
@@ -1153,21 +1158,21 @@ class brewery(pytappdObject):
                 "beer_list",
                 ]
         if json=={}:
-            mylog.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("brewery: Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.__id=objid
         else:
-            mylog.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("brewery: Init {0} object from json.".format(self.apiName))
             self.json=json
             if json.get("beer_list", False):
-                mylog.info("Brewery {0} returned a beer list, filling it out.".format(self.name))
+                mylog.info("brewery: Brewery {0} returned a beer list, filling it out.".format(self.name))
                 for b in json["beer_list"]["items"]:
                     self.beer_list.append(beer(json=b["beer"]))
 
     def update(self, apiobject):
-        mylog.info("Trying to update online {0}".format(self.name))
+        mylog.info("update: Trying to update online {0}".format(self.name))
         if self.id==0 and self.name=="":
-            mylog.warning("Can't look up id 0 online, returning fail!")
+            mylog.warning("update: Can't look up id 0 online, returning fail!")
             return False
         if self.id!=0:
             self=apiobject.getBrewery(self.id)
@@ -1242,38 +1247,47 @@ class checkin(pytappdObject):
         self.media=media()
         self.badges=[]
         if json=={}:
-            mylog.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("checkin: Init {0} object empty.".format(self.apiName))
             self.__id=objid
             self.__name=name
             self.brewery=brewery()
             self.beer=beer()
         else:
-            mylog.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("checkin: Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("brewery", False):
                 # Checkin SHOULD have the brewery directly underneath the checkin
-                mylog.debug("Found brewery in checkin.")
+                mylog.debug("checkin: Found brewery in checkin.")
                 self.brewery=brewery(json=self.json["brewery"])
             if self.json.get("beer", False):
                 # Checkin SHOULD have the beer directly underneath the checkin
-                mylog.debug("Found brewery in checkin.")
+                mylog.debug("checkin: Found brewery in checkin.")
                 self.beer=beer(json=self.json["beer"])
+                if not self.brewery:
+                    self.beer.brewery=self.brewery(json=self.json["brewery"])
+                else:
+                    self.beer.brewery=self.brewery
             if self.json.get("media", False):
                 # Checkin will have media, unless the user didn't add a picture
-                mylog.info("Found media in checkin.")
+                mylog.info("checkin: Found media in checkin.")
                 self.media=media(json=self.json["media"])
             if self.json.get("badges", False):
-                mylog.info("Found badges in checkin.")
+                mylog.info("checkin: Found badges in checkin.")
                 for b in self.json["badges"]["items"]:
                     x=badge(json=b)
-                    mylog.debug("Found badge {0}".format(x.name))
+                    mylog.debug("checkin: Found badge {0}".format(x.name))
                     self.badges.append(x)
             if self.json.get("user", False):
-                mylog.info("Found user in checkin.")
+                mylog.info("checkin: Found user in checkin.")
                 self.user=user(json=self.json["user"])
             if self.json.get("username", False):
-                mylog.info("Found username in checkin.")
+                mylog.info("checkin: Found username in checkin.")
                 self.user=user(json=self.json["username"])
+            if self.json.get("venue", False):
+                mylog.info("checkin: Found venue in checkin.")
+                self.venue=venue(json=self.json["venue"])
+            mylog.info("checkin: Finished initialing checkin from json data.")
+
 
 class media(pytappdObject):
     '''Media object - Should only come back inside checkins or
@@ -1320,30 +1334,30 @@ class media(pytappdObject):
                 'venue',
                 ]
         if json=={}:
-            mylog.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("media: Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.__id=objid
         else:
-            mylog.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("media: Init {0} object from json.".format(self.apiName))
             self.json=json
             if self.json.get("beer", False):
-                mylog.debug("This media has an associated beer.")
+                mylog.debug("media: This media has an associated beer.")
                 self.beer=beer(json=self.json["beer"])
             if self.json.get("brewery", False):
-                mylog.debug("This media has an associated brewery.")
+                mylog.debug("media: This media has an associated brewery.")
                 self.brewery=brewery(json=self.json["brewery"])
             if self.json.get("venue", False):
                 if self.json["venue"] == [[]] or self.json["venue"]==[]:
-                    mylog.info("the venue for this media is empty.")
+                    mylog.info("media: the venue for this media is empty.")
                     self.venue=venue()
                 else:
-                    mylog.debug("This media has an associated venue.")
+                    mylog.debug("media: This media has an associated venue.")
                     self.venue=venue(json=self.json["venue"][0])
             if self.json.get("user", False):
-                mylog.debug("This media has an associated user.")
+                mylog.debug("media: This media has an associated user.")
                 self.user=user(json=self.json["user"])
             if self.json.get("checkin_id"):
-                mylog.debug("This media has an associated checkin.")
+                mylog.debug("media: This media has an associated checkin.")
                 self.checkin=self.json["checkin_id"]
 
 class user(pytappdObject):
@@ -1404,20 +1418,20 @@ class user(pytappdObject):
                 'recent_brews',
                 ]
         if json=={}:
-            mylog.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("user: Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.__id=objid
         else:
-            mylog.debug("Init {0} object from json.".format(self.apiName))
+            mylog.debug("user: Init {0} object from json.".format(self.apiName))
             self.json=json
             if json.get("recent_brews", False):
                 for item in json["recent_brews"]["items"]:
                     if item.get("beer", False):
-                        mylog.debug("Found beer: {0}, which is raw: {1}.".format(item["beer"]["beer_name"], item))
+                        mylog.debug("user: Found beer: {0}, which is raw: {1}.".format(item["beer"]["beer_name"], item))
                         x=beer(json=item["beer"])
                         x.brewery=brewery(json=item.get("brewery", {}))
                         self.recent_brews.append(x)
-                        mylog.info("Found beer: {0}".format(x.name))
+                        mylog.info("user: Found beer: {0}".format(x.name))
 
 class venue(pytappdObject):
     '''Venue object - requires FourSquare City Lookup'''
@@ -1471,17 +1485,17 @@ class venue(pytappdObject):
                 ]
         self.media=[]
         if json=={}:
-            mylog.debug("Init {0} object empty.".format(self.apiName))
+            mylog.debug("venue: Init {0} object empty.".format(self.apiName))
             self.__name=name
             self.__id=objid
         else:
-            mylog.info("Init {0} object from json.".format(self.apiName))
-            mylog.debug("Got full json: {0}".format(json))
+            mylog.info("venue: Init {0} object from json.".format(self.apiName))
+            mylog.debug("venue: Got full json: {0}".format(json))
             self.json=json
             if json.get("media", False):
                 for item in json["media"]["items"]:
                     self.media.append(media(json=item))
-                    mylog.info("Found media ID: {0}".format(item["photo_id"]))
+                    mylog.info("venue: Found media ID: {0}".format(item["photo_id"]))
             if json.get("foursquare", False):
                 self.foursquareid=json["foursquare"]["foursquare_id"]
                 mylog.info("Found 4square ID {0}, saving.".format(self.foursquareid))
